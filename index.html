@@ -1094,152 +1094,49 @@
         let scanStartTime = null;
         let scanTimes = [];
         
-        // API管理系统 - 增强版（包含5秒自动切换）
+        // API管理系统 - 使用改进的API
         let apiProviders = [
             {
                 name: 'blockchain.info',
                 url: (address) => `https://blockchain.info/balance?active=${address}`,
-                parse: (data) => {
+                parse: (data, address) => {
                     try {
-                        const addr = Object.keys(data)[0];
-                        const balance = data[addr]?.final_balance || 0;
-                        return {
-                            balance: balance,
-                            received: data[addr]?.total_received || 0,
-                            txCount: data[addr]?.n_tx || 0,
+                        const info = data[address];
+                        return info ? {
+                            balance: info.final_balance || 0,
+                            received: info.total_received || 0,
+                            txCount: info.n_tx || 0,
                             success: true
-                        };
+                        } : { balance: -1, success: false };
                     } catch (e) {
-                        return { balance: -1, received: 0, txCount: 0, success: false };
+                        return { balance: -1, success: false };
                     }
                 },
                 active: true,
                 success: 0,
                 attempts: 0,
-                timeout: 5000,
-                priority: 1,
-                lastUsed: 0,
-                avgResponseTime: 0,
-                healthScore: 100,
-                lastResponseTime: null,
-                consecutiveFailures: 0,
-                maxConsecutiveFailures: 3
+                priority: 1
             },
             {
-                name: 'mempool.space',
-                url: (address) => `https://mempool.space/api/address/${address}`,
-                parse: (data) => {
+                name: 'blockchain.info quick',
+                url: (address) => `https://blockchain.info/q/addressbalance/${address}`,
+                parse: (text, address) => {
                     try {
-                        const balance = data.chain_stats?.funded_txo_sum - data.chain_stats?.spent_txo_sum || 0;
+                        const balance = parseInt(text);
                         return {
-                            balance: balance,
-                            received: data.chain_stats?.funded_txo_sum || 0,
-                            txCount: data.chain_stats?.tx_count || 0,
-                            success: true
+                            balance: isNaN(balance) ? 0 : balance,
+                            received: 0,
+                            txCount: 0,
+                            success: !isNaN(balance)
                         };
                     } catch (e) {
-                        return { balance: -1, received: 0, txCount: 0, success: false };
+                        return { balance: -1, success: false };
                     }
                 },
                 active: true,
                 success: 0,
                 attempts: 0,
-                timeout: 5000,
-                priority: 2,
-                lastUsed: 0,
-                avgResponseTime: 0,
-                healthScore: 100,
-                lastResponseTime: null,
-                consecutiveFailures: 0,
-                maxConsecutiveFailures: 3
-            },
-            {
-                name: 'blockcypher.com',
-                url: (address) => `https://api.blockcypher.com/v1/btc/main/addrs/${address}/balance`,
-                parse: (data) => {
-                    try {
-                        return {
-                            balance: data.balance || 0,
-                            received: data.total_received || 0,
-                            txCount: data.n_tx || 0,
-                            success: true
-                        };
-                    } catch (e) {
-                        return { balance: -1, received: 0, txCount: 0, success: false };
-                    }
-                },
-                active: true,
-                success: 0,
-                attempts: 0,
-                timeout: 5000,
-                priority: 3,
-                lastUsed: 0,
-                avgResponseTime: 0,
-                healthScore: 100,
-                lastResponseTime: null,
-                consecutiveFailures: 0,
-                maxConsecutiveFailures: 3
-            },
-            {
-                name: 'blockchair.com',
-                url: (address) => `https://api.blockchair.com/bitcoin/dashboards/address/${address}`,
-                parse: (data) => {
-                    try {
-                        const addressData = data.data?.[address];
-                        if (addressData) {
-                            const balance = addressData.address.balance || 0;
-                            const received = addressData.address.received || 0;
-                            const txCount = addressData.address.transaction_count || 0;
-                            return {
-                                balance: balance,
-                                received: received,
-                                txCount: txCount,
-                                success: true
-                            };
-                        }
-                        return { balance: -1, received: 0, txCount: 0, success: false };
-                    } catch (e) {
-                        return { balance: -1, received: 0, txCount: 0, success: false };
-                    }
-                },
-                active: true,
-                success: 0,
-                attempts: 0,
-                timeout: 6000,
-                priority: 4,
-                lastUsed: 0,
-                avgResponseTime: 0,
-                healthScore: 100,
-                lastResponseTime: null,
-                consecutiveFailures: 0,
-                maxConsecutiveFailures: 3
-            },
-            {
-                name: 'localbitcoinchain.com',
-                url: (address) => `https://localbitcoinchain.com/api/addr/${address}`,
-                parse: (data) => {
-                    try {
-                        return {
-                            balance: data.balanceSat || 0,
-                            received: data.totalReceivedSat || 0,
-                            txCount: data.txApperances || 0,
-                            success: true
-                        };
-                    } catch (e) {
-                        return { balance: -1, received: 0, txCount: 0, success: false };
-                    }
-                },
-                active: true,
-                success: 0,
-                attempts: 0,
-                timeout: 5000,
-                priority: 5,
-                lastUsed: 0,
-                avgResponseTime: 0,
-                healthScore: 100,
-                lastResponseTime: null,
-                consecutiveFailures: 0,
-                maxConsecutiveFailures: 3
+                priority: 2
             }
         ];
         
@@ -1248,123 +1145,13 @@
         let apiTotalSuccess = 0;
         let isInitialized = false;
         
-        // API健康监控器
-        let apiHealthMonitor = {
-            checkInterval: 30000, // 30秒检查一次
-            lastCheck: 0,
-            
-            // 检查API健康状态
-            checkAllAPIs: async function() {
-                const now = Date.now();
-                if (now - this.lastCheck < this.checkInterval) {
-                    return;
-                }
-                
-                this.lastCheck = now;
-                console.log('开始API健康检查...');
-                
-                const testAddress = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa";
-                
-                for (let i = 0; i < apiProviders.length; i++) {
-                    const provider = apiProviders[i];
-                    if (!provider.active) continue;
-                    
-                    try {
-                        const startTime = Date.now();
-                        const response = await fetch(provider.url(testAddress), {
-                            method: 'GET',
-                            signal: AbortSignal.timeout(provider.timeout)
-                        });
-                        
-                        const responseTime = Date.now() - startTime;
-                        provider.lastResponseTime = responseTime;
-                        
-                        // 更新平均响应时间
-                        if (provider.avgResponseTime === 0) {
-                            provider.avgResponseTime = responseTime;
-                        } else {
-                            provider.avgResponseTime = (provider.avgResponseTime * 0.7) + (responseTime * 0.3);
-                        }
-                        
-                        if (response.ok) {
-                            provider.healthScore = Math.min(100, provider.healthScore + 10);
-                            provider.consecutiveFailures = 0;
-                            console.log(`API ${provider.name} 健康检查通过，响应时间: ${responseTime}ms，健康分: ${provider.healthScore}`);
-                        } else {
-                            provider.healthScore = Math.max(0, provider.healthScore - 20);
-                            provider.consecutiveFailures++;
-                            console.warn(`API ${provider.name} 健康检查失败，状态码: ${response.status}，健康分: ${provider.healthScore}`);
-                        }
-                    } catch (error) {
-                        const responseTime = Date.now() - startTime;
-                        provider.lastResponseTime = responseTime;
-                        provider.healthScore = Math.max(0, provider.healthScore - 30);
-                        provider.consecutiveFailures++;
-                        console.warn(`API ${provider.name} 健康检查异常: ${error.message}，健康分: ${provider.healthScore}`);
-                        
-                        // 如果连续失败超过阈值，禁用该API
-                        if (provider.consecutiveFailures >= provider.maxConsecutiveFailures) {
-                            provider.active = false;
-                            console.warn(`API ${provider.name} 已被临时禁用`);
-                        }
-                    }
-                    
-                    // 短暂延迟
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-                
-                // 重新排序API，将最健康的放在前面
-                apiProviders.sort((a, b) => {
-                    if (!a.active && b.active) return 1;
-                    if (a.active && !b.active) return -1;
-                    return b.healthScore - a.healthScore;
-                });
-                
-                // 更新当前API索引
-                currentApiIndex = 0;
-                updateApiDisplay();
-                console.log('API健康检查完成');
-            },
-            
-            // 选择最佳API
-            selectBestAPI: function() {
-                let bestIndex = 0;
-                let bestScore = -1;
-                
-                for (let i = 0; i < apiProviders.length; i++) {
-                    const provider = apiProviders[i];
-                    if (!provider.active) continue;
-                    
-                    // 计算综合得分
-                    const healthScore = provider.healthScore;
-                    const priorityScore = 100 - provider.priority * 10;
-                    const responseScore = provider.avgResponseTime > 0 ? Math.max(0, 100 - (provider.avgResponseTime / 50)) : 50;
-                    const successScore = provider.attempts > 0 ? (provider.success / provider.attempts) * 100 : 50;
-                    
-                    const totalScore = 
-                        healthScore * 0.4 + 
-                        successScore * 0.3 + 
-                        responseScore * 0.2 + 
-                        priorityScore * 0.1;
-                    
-                    if (totalScore > bestScore) {
-                        bestScore = totalScore;
-                        bestIndex = i;
-                    }
-                }
-                
-                currentApiIndex = bestIndex;
-                return bestIndex;
-            }
-        };
-        
         // 警报系统
         let alarmEnabled = true;
         let alarmSound = null;
         
-        // 预设地址 - 只是标记，实际余额从API获取
+        // 预设地址 - 第5000个和第10000个
         const presetAddresses = {
-            1000: {
+            5000: {
                 address: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
                 mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
                 privateKey: "L5EZftvrYaSudiozVRzTqLcHLNDoVn7H5HSfM9BAN6tMJX8oTWz6",
@@ -1378,7 +1165,79 @@
             }
         };
         
-        // 初始化函数 - 完全重写
+        // 改进的API检查函数 - 使用更好的API
+        async function checkBalanceImproved(address) {
+            apiTotalAttempts++;
+            
+            // 按优先级尝试所有API
+            const sortedApis = [...apiProviders].sort((a, b) => a.priority - b.priority);
+            
+            for (const provider of sortedApis) {
+                if (!provider.active) continue;
+                
+                try {
+                    provider.attempts++;
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 3000);
+                    
+                    const response = await fetch(provider.url(address), {
+                        method: 'GET',
+                        signal: controller.signal,
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                        }
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) {
+                        continue; // 尝试下一个API
+                    }
+                    
+                    const contentType = response.headers.get('content-type');
+                    let data;
+                    
+                    if (contentType && contentType.includes('application/json')) {
+                        data = await response.json();
+                    } else {
+                        data = await response.text();
+                    }
+                    
+                    const result = provider.parse(data, address);
+                    
+                    if (result.success) {
+                        provider.success++;
+                        apiTotalSuccess++;
+                        updateApiStats();
+                        return { ...result, apiSuccess: true };
+                    }
+                    
+                } catch (error) {
+                    // 这个API失败，继续尝试下一个
+                    console.log(`API ${provider.name} 失败:`, error.message);
+                    continue;
+                }
+            }
+            
+            // 所有API都失败
+            updateApiStats();
+            return {
+                balance: -1,
+                received: 0,
+                txCount: 0,
+                apiSuccess: false,
+                success: false
+            };
+        }
+        
+        // 更新API统计
+        function updateApiStats() {
+            document.getElementById('apiAttempts').textContent = apiTotalAttempts;
+            const successRate = apiTotalAttempts > 0 ? Math.round((apiTotalSuccess / apiTotalAttempts) * 100) : 100;
+            document.getElementById('apiSuccessRate').textContent = `${successRate}%`;
+        }
+        
+        // 初始化函数
         async function init() {
             console.log("开始初始化...");
             
@@ -1392,72 +1251,64 @@
             updateSpeed();
             updateTotalBTC();
             
-            // 4. 立即测试API可用性（快速测试）
-            await quickApiTest();
+            // 4. 测试API可用性
+            await testApiAvailability();
             
             // 5. 启用界面
             enableInterface();
             
-            // 6. 启动API健康监控
-            setInterval(() => {
-                if (isScanning) {
-                    apiHealthMonitor.checkAllAPIs().catch(console.error);
-                }
-            }, apiHealthMonitor.checkInterval);
-            
             console.log("初始化完成");
         }
         
-        // 快速API测试
-        async function quickApiTest() {
+        // 测试API可用性
+        async function testApiAvailability() {
             const testAddress = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa";
-            let testedCount = 0;
             
-            for (let i = 0; i < apiProviders.length; i++) {
-                const provider = apiProviders[i];
-                try {
-                    const startTime = Date.now();
-                    const response = await fetch(provider.url(testAddress), {
-                        method: 'GET',
-                        signal: AbortSignal.timeout(3000)
-                    });
-                    
-                    const responseTime = Date.now() - startTime;
-                    
-                    if (response.ok) {
-                        provider.success++;
-                        provider.attempts++;
-                        provider.lastResponseTime = responseTime;
-                        provider.avgResponseTime = responseTime;
-                        testedCount++;
-                        
-                        if (testedCount === 1) {
-                            // 使用第一个成功的API
-                            currentApiIndex = i;
-                            updateApiDisplay();
-                            updateApiStatus('在线', 'online');
-                            console.log(`使用API: ${provider.name}，响应时间: ${responseTime}ms`);
-                        }
+            // 测试主API
+            const testProvider = apiProviders[0];
+            try {
+                const response = await fetch(testProvider.url(testAddress), {
+                    method: 'GET',
+                    signal: AbortSignal.timeout(3000),
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0'
                     }
-                } catch (error) {
-                    console.log(`API ${provider.name} 测试失败:`, error.message);
-                    provider.attempts++;
-                    provider.consecutiveFailures++;
+                });
+                
+                if (response.ok) {
+                    currentApiIndex = 0;
+                    updateApiDisplay();
+                    updateApiStatus('在线', 'online');
+                    return true;
                 }
+            } catch (error) {
+                console.log('主API测试失败:', error.message);
             }
             
-            if (testedCount === 0) {
-                // 所有API都失败了
-                updateApiStatus('离线（降级模式）', 'offline');
-                console.warn('所有API测试失败，使用降级模式');
-            } else {
-                // 选择最佳API
-                apiHealthMonitor.selectBestAPI();
-                updateApiDisplay();
-                const bestProvider = apiProviders[currentApiIndex];
-                updateApiStatus(`在线 (${bestProvider.name})`, 'online');
-                console.log(`已选择最佳API: ${bestProvider.name}，健康分: ${bestProvider.healthScore}`);
+            // 测试备用API
+            const backupProvider = apiProviders[1];
+            try {
+                const response = await fetch(backupProvider.url(testAddress), {
+                    method: 'GET',
+                    signal: AbortSignal.timeout(3000),
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0'
+                    }
+                });
+                
+                if (response.ok) {
+                    currentApiIndex = 1;
+                    updateApiDisplay();
+                    updateApiStatus('在线(备用)', 'online');
+                    return true;
+                }
+            } catch (error) {
+                console.log('备用API测试失败:', error.message);
             }
+            
+            // 所有API都失败了
+            updateApiStatus('离线', 'offline');
+            return false;
         }
         
         // 更新API状态显示
@@ -1529,22 +1380,6 @@
                     alarmSound.currentTime = 0;
                     alarmSound.play().catch(e => {
                         console.log('警报播放失败:', e);
-                        // 使用浏览器声音
-                        const context = new (window.AudioContext || window.webkitAudioContext)();
-                        const oscillator = context.createOscillator();
-                        const gainNode = context.createGain();
-                        
-                        oscillator.connect(gainNode);
-                        gainNode.connect(context.destination);
-                        
-                        oscillator.frequency.value = 800;
-                        oscillator.type = 'sine';
-                        
-                        gainNode.gain.setValueAtTime(0.3, context.currentTime);
-                        gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 1);
-                        
-                        oscillator.start(context.currentTime);
-                        oscillator.stop(context.currentTime + 1);
                     });
                 } catch (e) {
                     console.log('警报播放异常:', e);
@@ -1609,10 +1444,11 @@
         
         // 扫描下一个
         async function scanNext() {
+            // 只在检查完成后显示
+            let showAfterCheck = false;
+            let generatedData = null;
+            
             try {
-                // 记录开始时间
-                const scanStart = Date.now();
-                
                 // 检查是否为预设地址
                 let presetData = null;
                 if (scanCounter + 1 in presetAddresses) {
@@ -1632,19 +1468,15 @@
                         const newmnemo = buidl.newMnemonic();
                         words = newmnemo.words;
                         
-                        // 转换为种子
                         const hdseed = buidl.mnemonic2SeedHex(words);
-                        
-                        // 派生地址
                         const addr = buidl.fromHDSeed(hdseed.seedHex, 0, 0, 0);
                         address = addr.addr;
                         privateKey = addr.pk;
                     } catch (error) {
                         console.error('生成助记词失败:', error);
-                        // 生成随机数据继续
-                        words = Array(12).fill(0).map(() => Math.random().toString(36).substring(2, 8)).join(' ');
-                        address = '1' + Math.random().toString(36).substring(2, 34);
-                        privateKey = 'L' + Math.random().toString(36).substring(2, 34);
+                        words = '生成错误';
+                        address = 'N/A';
+                        privateKey = 'N/A';
                     }
                 }
                 
@@ -1653,44 +1485,35 @@
                 document.getElementById('statGenerated').textContent = scanCounter;
                 document.getElementById('currentScanNumber').textContent = `#${scanCounter}`;
                 
-                // 检查余额 - 使用增强的API检查
-                const balanceInfo = await checkBalanceEnhanced(address);
+                // 保存生成的数据用于检查完成后显示
+                generatedData = {
+                    id: scanCounter,
+                    words: words,
+                    address: address,
+                    privateKey: privateKey,
+                    isPreset: !!presetData
+                };
+                
+                // 检查余额 - 使用改进的API
+                const balanceInfo = await checkBalanceImproved(address);
                 
                 // 更新检查计数器
                 checkedCounter++;
                 document.getElementById('statChecked').textContent = checkedCounter;
                 
-                // 更新API统计
-                apiTotalAttempts++;
-                document.getElementById('apiAttempts').textContent = apiTotalAttempts;
-                
-                if (balanceInfo.apiSuccess) {
-                    apiTotalSuccess++;
-                }
-                
-                const successRate = apiTotalAttempts > 0 ? Math.round((apiTotalSuccess / apiTotalAttempts) * 100) : 100;
-                document.getElementById('apiSuccessRate').textContent = `${successRate}%`;
-                
                 // 记录扫描时间
-                const scanTime = Date.now() - scanStart;
-                scanTimes.push(scanTime);
+                const scanTime = 0; // 不再记录详细时间
                 
                 // 创建结果对象
                 const result = {
-                    id: scanCounter,
-                    words: words,
-                    address: address,
-                    privateKey: privateKey,
+                    ...generatedData,
                     balance: balanceInfo.balance,
                     received: balanceInfo.received,
                     txCount: balanceInfo.txCount || 0,
                     timestamp: new Date().toLocaleTimeString(),
                     date: new Date().toISOString(),
                     scanTime: scanTime,
-                    apiSuccess: balanceInfo.apiSuccess,
-                    apiUsed: balanceInfo.apiUsed,
-                    responseTime: balanceInfo.responseTime,
-                    isPreset: !!presetData
+                    apiSuccess: balanceInfo.apiSuccess
                 };
                 
                 // 保存当前数据
@@ -1751,150 +1574,6 @@
                 allResults.unshift(errorResult);
                 updatePatrolTable();
             }
-        }
-        
-        // 增强的余额检查（包含5秒超时自动切换）
-        async function checkBalanceEnhanced(address) {
-            const startTime = Date.now();
-            let lastError = null;
-            let attempts = 0;
-            let bestResult = null;
-            
-            // 获取活跃的API列表（按健康分排序）
-            const activeProviders = apiProviders
-                .filter(p => p.active)
-                .sort((a, b) => {
-                    // 按健康分、平均响应时间和成功率排序
-                    const aScore = a.healthScore * 0.5 + (100 - Math.min(a.avgResponseTime / 100, 100)) * 0.3 + (a.attempts > 0 ? (a.success / a.attempts) * 100 * 0.2 : 0);
-                    const bScore = b.healthScore * 0.5 + (100 - Math.min(b.avgResponseTime / 100, 100)) * 0.3 + (b.attempts > 0 ? (b.success / b.attempts) * 100 * 0.2 : 0);
-                    return bScore - aScore;
-                });
-            
-            if (activeProviders.length === 0) {
-                console.warn('没有活跃的API可用');
-                return {
-                    balance: -1,
-                    received: 0,
-                    txCount: 0,
-                    apiSuccess: false,
-                    apiUsed: '无可用API',
-                    responseTime: Date.now() - startTime
-                };
-            }
-            
-            // 尝试所有活跃API
-            for (let i = 0; i < activeProviders.length; i++) {
-                const provider = activeProviders[i];
-                attempts++;
-                
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => {
-                        controller.abort();
-                        console.log(`API ${provider.name} 请求超时（${provider.timeout}ms）`);
-                    }, provider.timeout);
-                    
-                    const requestStart = Date.now();
-                    const response = await fetch(provider.url(address), {
-                        signal: controller.signal,
-                        mode: 'cors',
-                        headers: {
-                            'Accept': 'application/json',
-                            'User-Agent': 'MnemonicScanner/1.0'
-                        }
-                    });
-                    
-                    clearTimeout(timeoutId);
-                    const requestTime = Date.now() - requestStart;
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        provider.success++;
-                        provider.attempts++;
-                        provider.lastResponseTime = requestTime;
-                        
-                        // 更新平均响应时间
-                        if (provider.avgResponseTime === 0) {
-                            provider.avgResponseTime = requestTime;
-                        } else {
-                            provider.avgResponseTime = (provider.avgResponseTime * 0.7) + (requestTime * 0.3);
-                        }
-                        
-                        provider.consecutiveFailures = 0;
-                        provider.healthScore = Math.min(100, provider.healthScore + 5);
-                        
-                        const result = provider.parse(data);
-                        
-                        // 更新当前API索引（如果这不是当前使用的API）
-                        const currentProviderIndex = apiProviders.findIndex(p => p.name === provider.name);
-                        if (currentProviderIndex !== -1 && currentProviderIndex !== currentApiIndex) {
-                            currentApiIndex = currentProviderIndex;
-                            updateApiDisplay();
-                            console.log(`切换到更快的API: ${provider.name}，响应时间: ${requestTime}ms`);
-                        }
-                        
-                        bestResult = {
-                            ...result,
-                            apiSuccess: true,
-                            apiUsed: provider.name,
-                            responseTime: Date.now() - startTime,
-                            requestTime: requestTime
-                        };
-                        
-                        break; // 成功则停止尝试
-                    } else {
-                        clearTimeout(timeoutId);
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-                } catch (error) {
-                    provider.attempts++;
-                    provider.consecutiveFailures++;
-                    provider.healthScore = Math.max(0, provider.healthScore - 15);
-                    lastError = error;
-                    
-                    console.warn(`API ${provider.name} 尝试失败:`, error.message);
-                    
-                    // 如果连续失败超过阈值，临时禁用该API
-                    if (provider.consecutiveFailures >= provider.maxConsecutiveFailures) {
-                        provider.active = false;
-                        console.warn(`API ${provider.name} 已被临时禁用（连续失败 ${provider.consecutiveFailures} 次）`);
-                    }
-                    
-                    // 短暂延迟后尝试下一个
-                    if (i < activeProviders.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, 300));
-                    }
-                }
-            }
-            
-            if (bestResult) {
-                return bestResult;
-            }
-            
-            // 所有API都失败
-            console.error('所有API尝试失败，最后一个错误:', lastError?.message);
-            
-            // 尝试重新激活一些API
-            for (const provider of apiProviders) {
-                if (!provider.active && provider.consecutiveFailures > 0) {
-                    // 如果已经过去一段时间，尝试重新激活
-                    if (Date.now() - provider.lastUsed > 60000) { // 1分钟
-                        provider.active = true;
-                        provider.consecutiveFailures = 0;
-                        provider.healthScore = 50;
-                        console.log(`重新激活API: ${provider.name}`);
-                    }
-                }
-            }
-            
-            return {
-                balance: -1,
-                received: 0,
-                txCount: 0,
-                apiSuccess: false,
-                apiUsed: lastError ? `所有API失败（最后: ${lastError.message})` : '所有API失败',
-                responseTime: Date.now() - startTime
-            };
         }
         
         // 更新当前扫描显示
@@ -1975,9 +1654,9 @@
             document.getElementById('statSuccessRate').textContent = `${successRate}%`;
             
             // 平均速度
-            if (scanTimes.length > 0) {
-                const avgTime = scanTimes.reduce((a, b) => a + b, 0) / scanTimes.length;
-                const avgSpeed = (1000 / avgTime).toFixed(1);
+            if (scanStartTime) {
+                const totalTime = (Date.now() - scanStartTime) / 1000;
+                const avgSpeed = totalTime > 0 ? (checkedCounter / totalTime).toFixed(1) : 0;
                 document.getElementById('statAvgSpeed').textContent = avgSpeed;
             }
         }
@@ -1988,12 +1667,6 @@
             const failedCount = allResults.filter(r => r.balance === -1).length;
             const apiSuccessRate = apiTotalAttempts > 0 ? Math.round((apiTotalSuccess / apiTotalAttempts) * 100) : 100;
             
-            // 统计活跃API
-            const activeAPIs = apiProviders.filter(p => p.active);
-            const apiDetails = activeAPIs.map(p => 
-                `  ${p.name}: ${p.success}/${p.attempts} (${p.attempts > 0 ? Math.round(p.success/p.attempts*100) : 0}%)，健康分: ${p.healthScore}，响应时间: ${p.avgResponseTime ? p.avgResponseTime.toFixed(0) : 'N/A'}ms`
-            ).join('\n');
-            
             alert(`📊 统计信息：
             
 已生成助记词: ${scanCounter}
@@ -2003,18 +1676,12 @@
 发现余额: ${foundCounter}
 成功率: ${checkedCounter > 0 ? (successCount / checkedCounter * 100).toFixed(6) : 0}%
 总BTC发现: ${totalBTC.toFixed(8)}
-平均扫描速度: ${scanTimes.length > 0 ? (1000 / (scanTimes.reduce((a, b) => a + b, 0) / scanTimes.length)).toFixed(1)}个/秒
-扫描总时间: ${scanStartTime ? ((Date.now() - scanStartTime) / 1000).toFixed(1)}秒
 
 📡 API统计:
 总尝试: ${apiTotalAttempts}
 成功: ${apiTotalSuccess}
 成功率: ${apiSuccessRate}%
-当前API: ${apiProviders[currentApiIndex].name}
-
-🌐 可用API:
-${activeAPIs.length > 0 ? apiDetails : '没有活跃的API'}
-`);
+当前API: ${apiProviders[currentApiIndex].name}`);
         }
         
         // 导出数据
@@ -2304,7 +1971,7 @@ API状态: ${r.apiSuccess ? '成功' : '失败'}
                     balanceInfo = `${(result.balance / 100000000).toFixed(8)} BTC`;
                 }
                 
-                alert(`查看扫描 #${id}\n\n助记词: ${result.words}\n地址: ${result.address}\n私钥: ${result.privateKey}\n余额: ${balanceInfo}\nAPI: ${result.apiUsed || '未知'}\n响应时间: ${result.responseTime ? result.responseTime + 'ms' : '未知'}`);
+                alert(`查看扫描 #${id}\n\n助记词: ${result.words}\n地址: ${result.address}\n私钥: ${result.privateKey}\n余额: ${balanceInfo}`);
             }
         }
         
