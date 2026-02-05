@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>助记词扫描器 v1.0</title>
     <style>
-        /* 所有样式保持不变，与之前完全一样 */
+        /* 所有原有样式完全保持不变 */
         * {
             margin: 0;
             padding: 0;
@@ -369,6 +369,37 @@
             color: #58a6ff;
             font-weight: bold;
             font-size: 16px;
+        }
+        
+        /* 在原有speed-control下方添加速度选项，但保持原有样式 */
+        .speed-options {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .speed-btn {
+            padding: 8px 16px;
+            background: rgba(33, 38, 45, 0.8);
+            border: 1px solid rgba(48, 54, 61, 0.6);
+            color: #8b949e;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .speed-btn:hover {
+            background: rgba(48, 54, 61, 0.8);
+            color: #58a6ff;
+        }
+        
+        .speed-btn.active {
+            background: linear-gradient(90deg, #58a6ff 0%, #8957e5 100%);
+            color: white;
+            border-color: #58a6ff;
         }
         
         .api-info {
@@ -898,6 +929,10 @@
             .action-buttons {
                 flex-direction: column;
             }
+            
+            .speed-options {
+                justify-content: center;
+            }
         }
         
         @media (max-width: 480px) {
@@ -913,6 +948,11 @@
             
             .header h1 {
                 font-size: 28px;
+            }
+            
+            .speed-btn {
+                padding: 6px 12px;
+                font-size: 12px;
             }
         }
     </style>
@@ -979,7 +1019,12 @@
             
             <div class="speed-control">
                 <label>扫描速度: <span class="speed-value" id="speedValue">1</span> 个/秒</label>
-                <input type="range" min="1" max="2" step="1" value="1" class="speed-slider" id="speedSlider" oninput="updateSpeed()">
+                <input type="range" min="1" max="5" step="1" value="1" class="speed-slider" id="speedSlider" oninput="updateSpeed()">
+                
+                <!-- 添加速度选项按钮 -->
+                <div class="speed-options" id="speedOptions">
+                    <!-- 速度选项按钮将通过JavaScript生成 -->
+                </div>
             </div>
             
             <div class="api-info">
@@ -1406,13 +1451,108 @@
             }
         };
 
+        // ==================== 速度控制 ====================
+        function updateSpeed() {
+            const slider = document.getElementById('speedSlider');
+            const speedValue = parseInt(slider.value);
+            
+            // 根据滑块值设置实际速度
+            let actualSpeed = 1;
+            let displayText = "1";
+            
+            switch(speedValue) {
+                case 1:
+                    actualSpeed = 1; // 1个/秒
+                    displayText = "1";
+                    break;
+                case 2:
+                    actualSpeed = 2; // 2个/秒
+                    displayText = "2";
+                    break;
+                case 3:
+                    actualSpeed = 5; // 5个/秒
+                    displayText = "5";
+                    break;
+                case 4:
+                    actualSpeed = 10; // 10个/秒
+                    displayText = "10";
+                    break;
+                case 5:
+                    actualSpeed = 20; // 20个/秒
+                    displayText = "20";
+                    break;
+            }
+            
+            document.getElementById('speedValue').textContent = displayText;
+            generateSpeed = 1000 / actualSpeed; // 计算间隔时间
+            
+            // 更新滑块显示值
+            slider.setAttribute('data-value', displayText);
+            
+            // 更新活动按钮
+            updateSpeedButtons(displayText);
+            
+            // 如果正在扫描，重新设置定时器
+            if (isScanning) {
+                clearInterval(generateInterval);
+                generateInterval = setInterval(generateNext, generateSpeed);
+            }
+            
+            console.log(`速度设置为: ${displayText}个/秒, 间隔: ${generateSpeed}ms`);
+        }
+
+        function setSpeed(speed) {
+            const slider = document.getElementById('speedSlider');
+            
+            // 设置滑块位置
+            let sliderValue = 1;
+            switch(speed) {
+                case "1": sliderValue = 1; break;
+                case "2": sliderValue = 2; break;
+                case "5": sliderValue = 3; break;
+                case "10": sliderValue = 4; break;
+                case "20": sliderValue = 5; break;
+            }
+            
+            slider.value = sliderValue;
+            updateSpeed();
+        }
+
+        function updateSpeedButtons(activeSpeed) {
+            const buttons = document.querySelectorAll('.speed-btn');
+            buttons.forEach(btn => {
+                if (btn.getAttribute('data-speed') === activeSpeed) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+
+        function initSpeedOptions() {
+            const speedOptions = document.getElementById('speedOptions');
+            const speeds = [
+                { value: "1", label: "低速" },
+                { value: "2", label: "中速" },
+                { value: "5", label: "高速" },
+                { value: "10", label: "超速" },
+                { value: "20", label: "极速" }
+            ];
+            
+            let html = '';
+            speeds.forEach(speed => {
+                const active = speed.value === "1" ? "active" : "";
+                html += `<button class="speed-btn ${active}" data-speed="${speed.value}" onclick="setSpeed('${speed.value}')">${speed.label}</button>`;
+            });
+            
+            speedOptions.innerHTML = html;
+        }
+
         // ==================== 智能API选择器 ====================
         function getBestApiProvider() {
-            // 选择最可靠、最近使用的API
             const activeProviders = apiProviders.filter(p => p.active);
             if (activeProviders.length === 0) return null;
             
-            // 按成功率排序
             activeProviders.sort((a, b) => {
                 const successRateA = a.attempts > 0 ? a.success / a.attempts : 0;
                 const successRateB = b.attempts > 0 ? b.success / b.attempts : 0;
@@ -1424,9 +1564,7 @@
 
         function switchToNextApi() {
             apiSwitchCount++;
-            const currentTime = Date.now();
             
-            // 标记当前API为不活跃（如果连续失败）
             if (apiProviders[currentApiIndex]) {
                 const provider = apiProviders[currentApiIndex];
                 if (provider.attempts > 3 && provider.success / provider.attempts < 0.3) {
@@ -1435,13 +1573,11 @@
                 }
             }
             
-            // 选择下一个可用的API
             const availableProviders = apiProviders.filter((p, index) => 
                 p.active && index !== currentApiIndex
             );
             
             if (availableProviders.length > 0) {
-                // 选择成功率最高的
                 availableProviders.sort((a, b) => {
                     const rateA = a.attempts > 0 ? a.success / a.attempts : 1;
                     const rateB = b.attempts > 0 ? b.success / b.attempts : 1;
@@ -1509,14 +1645,12 @@
                         return { ...result, apiSuccess: true };
                     } else {
                         provider.attempts++;
-                        // 如果解析失败，切换到下一个API
                         switchToNextApi();
                         return { ...result, apiSuccess: false };
                     }
                 } else {
                     clearTimeout(timeoutId);
                     provider.attempts++;
-                    // 如果HTTP错误，切换到下一个API
                     switchToNextApi();
                     return {
                         balance: -1,
@@ -1529,7 +1663,6 @@
             } catch (error) {
                 clearTimeout(timeoutId);
                 provider.attempts++;
-                // 如果请求失败，切换到下一个API
                 switchToNextApi();
                 return {
                     balance: -1,
@@ -1547,7 +1680,6 @@
             const testAddress = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa";
             let workingApi = null;
             
-            // 并行测试所有API
             const testPromises = apiProviders.map(async (provider, index) => {
                 try {
                     const controller = new AbortController();
@@ -1578,7 +1710,6 @@
             const workingAPIs = results.filter(r => r.success);
             
             if (workingAPIs.length > 0) {
-                // 选择第一个可用的API
                 const bestApi = workingAPIs[0];
                 currentApiIndex = bestApi.index;
                 apiConnected = true;
@@ -1607,7 +1738,6 @@
             
             if (success) {
                 console.log("重连成功，API数量:", apiProviders.filter(p => p.active).length);
-                // 连接成功后开始处理队列
                 if (pendingAddresses.length > 0 && !processingQueue) {
                     startQueueProcessing();
                 }
@@ -1619,7 +1749,6 @@
                 if (retryCount >= maxRetries) {
                     updateApiStatus('重连失败', 'offline');
                 } else {
-                    // 5秒后重试
                     setTimeout(reconnectAPI, 5000);
                 }
                 return false;
@@ -1629,7 +1758,6 @@
         function manualReconnect() {
             console.log("手动触发重连");
             retryCount = 0;
-            // 重置所有API状态
             apiProviders.forEach(p => {
                 p.active = true;
                 p.success = 0;
@@ -1650,10 +1778,8 @@
             pendingAddresses.push(addressData);
             updateQueueInfo();
             
-            // 更新当前扫描显示为队列中的第一个
             updateCurrentScanFromQueue();
             
-            // 如果API已连接且没有在处理队列，开始处理
             if (apiConnected && !processingQueue && pendingAddresses.length > 0) {
                 startQueueProcessing();
             }
@@ -1667,7 +1793,6 @@
             processingQueue = true;
             console.log("开始处理队列，长度:", pendingAddresses.length);
             
-            // 每秒处理1个地址
             checkInterval = setInterval(processNextAddress, 1000);
         }
 
@@ -1685,21 +1810,17 @@
                 return;
             }
             
-            // 从队列中取出第一个地址
             const addressData = pendingAddresses.shift();
             updateQueueInfo();
             
             if (!addressData) return;
             
             try {
-                // 显示正在检查
                 updateCurrentScanBeforeCheck(addressData);
                 
-                // 快速检查余额
                 const balanceInfo = await checkBalanceFast(addressData.address);
                 
                 if (balanceInfo.success) {
-                    // 创建结果对象
                     const result = {
                         id: addressData.id,
                         words: addressData.words,
@@ -1713,21 +1834,15 @@
                         isPreset: addressData.isPreset
                     };
                     
-                    // 更新检查计数器
                     checkedCounter++;
                     document.getElementById('statChecked').textContent = checkedCounter;
                     document.getElementById('apiChecked').textContent = checkedCounter;
                     
-                    // 保存当前数据
                     currentData = result;
-                    
-                    // 添加到所有结果
                     allResults.unshift(result);
                     
-                    // 更新当前扫描显示
                     updateCurrentScan(result);
                     
-                    // 如果有余额
                     if (balanceInfo.balance > 0) {
                         foundCounter++;
                         totalBTC += balanceInfo.balance / 100000000;
@@ -1748,22 +1863,17 @@
                     updateStats();
                     
                 } else {
-                    // 检查失败
                     console.log("余额检查失败");
                     
-                    // 如果API可能已断开，触发重连
                     if (apiConnected && !balanceInfo.apiSuccess) {
                         console.log("API检查失败，可能已断开");
                         apiConnected = false;
                         updateApiStatus('检查失败', 'offline');
                         stopQueueProcessing();
-                        // 放回队列开头
                         pendingAddresses.unshift(addressData);
                         updateQueueInfo();
-                        // 3秒后重连
                         setTimeout(reconnectAPI, 3000);
                     } else {
-                        // 放回队列开头
                         pendingAddresses.unshift(addressData);
                         updateQueueInfo();
                     }
@@ -1771,11 +1881,9 @@
                 
             } catch (error) {
                 console.error('处理地址失败:', error);
-                // 放回队列
                 pendingAddresses.unshift(addressData);
                 updateQueueInfo();
                 
-                // 触发重连
                 if (apiConnected) {
                     apiConnected = false;
                     updateApiStatus('处理错误', 'offline');
@@ -1816,7 +1924,7 @@
             generateNext();
             generateInterval = setInterval(generateNext, generateSpeed);
             
-            console.log("高速扫描已开始，目标: 1个/秒");
+            console.log(`高速扫描已开始，速度: ${1000/generateSpeed}个/秒`);
         }
 
         function pauseScanner() {
@@ -1840,7 +1948,6 @@
             
             scanCounter++;
             
-            // 检查是否为预设地址
             let presetData = presetAddresses[scanCounter];
             
             let words, address, privateKey;
@@ -1978,21 +2085,6 @@
             document.getElementById('statSuccessRate').textContent = `${successRate}%`;
         }
 
-        function updateSpeed() {
-            const slider = document.getElementById('speedSlider');
-            const speedValue = document.getElementById('speedValue');
-            const speed = parseInt(slider.value);
-            speedValue.textContent = speed;
-            generateSpeed = 1000 / speed;
-            
-            if (isScanning) {
-                if (generateInterval) {
-                    clearInterval(generateInterval);
-                }
-                generateInterval = setInterval(generateNext, generateSpeed);
-            }
-        }
-
         function updateTotalBTC() {
             document.getElementById('totalBTC').textContent = totalBTC.toFixed(8) + ' BTC';
         }
@@ -2021,7 +2113,6 @@
             const filterBalance = document.getElementById('filterBalance').value;
             const sortBy = document.getElementById('sortBy').value;
             
-            // 应用搜索过滤
             if (searchInput) {
                 filteredResults = filteredResults.filter(item => 
                     item.words.toLowerCase().includes(searchInput) ||
@@ -2030,7 +2121,6 @@
                 );
             }
             
-            // 应用余额过滤
             if (filterBalance === 'positive') {
                 filteredResults = filteredResults.filter(item => item.balance > 0);
             } else if (filterBalance === 'zero') {
@@ -2039,7 +2129,6 @@
                 filteredResults = filteredResults.filter(item => item.balance === -1);
             }
             
-            // 应用排序
             if (sortBy === 'time') {
                 filteredResults.sort((a, b) => new Date(b.date) - new Date(a.date));
             } else if (sortBy === 'balance') {
@@ -2110,12 +2199,10 @@
             
             let html = '';
             
-            // 上一页按钮
             if (currentPage > 1) {
                 html += `<button class="page-btn" onclick="goToPage(${currentPage - 1})">上一页</button>`;
             }
             
-            // 页码按钮
             const maxVisiblePages = 5;
             let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
             let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
@@ -2132,7 +2219,6 @@
                 }
             }
             
-            // 下一页按钮
             if (currentPage < totalPages) {
                 html += `<button class="page-btn" onclick="goToPage(${currentPage + 1})">下一页</button>`;
             }
@@ -2173,7 +2259,6 @@
                 return;
             }
             
-            // 只显示最新的5个有余额的结果
             const recentBalances = balancesWithBTC.slice(0, 5);
             
             let html = '';
@@ -2235,7 +2320,6 @@
             
             notification.style.display = 'block';
             
-            // 5秒后自动隐藏
             setTimeout(() => {
                 notification.style.display = 'none';
             }, 5000);
@@ -2341,6 +2425,7 @@
 - 成功率: ${apiTotalAttempts > 0 ? Math.round((apiTotalSuccess / apiTotalAttempts) * 100) : 100}%
 - 队列长度: ${pendingAddresses.length}
 - 扫描时间: ${scanStartTime ? Math.round((Date.now() - scanStartTime) / 1000) : 0}秒
+- 当前速度: ${1000/generateSpeed}个/秒
             `.trim();
             
             alert(stats);
@@ -2359,7 +2444,6 @@
                 const txCount = item.txCount || 0;
                 const timestamp = item.timestamp || new Date().toLocaleString();
                 
-                // 转义CSV中的特殊字符
                 const escapeCSV = (str) => {
                     if (str === null || str === undefined) return '';
                     str = String(str);
@@ -2392,11 +2476,11 @@
             console.log("开始初始化...");
             
             initAlarmSound();
+            initSpeedOptions();
             updateSpeed();
             updateTotalBTC();
             updateQueueInfo();
             
-            // 测试所有API
             await testAllAPIs();
             
             if (apiConnected) {
