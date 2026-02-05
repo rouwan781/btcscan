@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>助记词扫描器 v1.0</title>
     <style>
-        /* 所有原有样式完全保持不变 */
+        /* 所有样式保持不变，只添加继续按钮的样式 */
         * {
             margin: 0;
             padding: 0;
@@ -317,8 +317,13 @@
             color: white;
         }
         
-        .btn-stats {
+        .btn-continue {
             background: linear-gradient(90deg, #1f6feb 0%, #2a7bf0 100%);
+            color: white;
+        }
+        
+        .btn-stats {
+            background: linear-gradient(90deg, #8957e5 0%, #9e6cfc 100%);
             color: white;
         }
         
@@ -328,7 +333,7 @@
         }
         
         .btn-reconnect {
-            background: linear-gradient(90deg, #8957e5 0%, #9e6cfc 100%);
+            background: linear-gradient(90deg, #f7931a 0%, #f9a53c 100%);
             color: white;
         }
         
@@ -1003,8 +1008,11 @@
                     <span class="loading-spinner" id="startSpinner" style="display:none;"></span>
                     <span>▶</span> <span id="startText">开始扫描</span>
                 </button>
-                <button class="btn btn-pause" onclick="pauseScanner()">
+                <button class="btn btn-pause" id="pauseButton" onclick="pauseScanner()" style="display:none;">
                     <span>⏸</span> 暂停
+                </button>
+                <button class="btn btn-continue" id="continueButton" onclick="continueScanner()" style="display:none;">
+                    <span>▶</span> 继续
                 </button>
                 <button class="btn btn-stats" onclick="showStats()">
                     <span>📊</span> 统计
@@ -1215,7 +1223,7 @@
         // 队列系统
         let pendingAddresses = [];
         let processingQueue = false;
-        const maxQueueSize = 200;
+        const maxQueueSize = 100; // 增大队列大小
         let currentApiIndex = 0;
         
         // 存储所有结果
@@ -1456,43 +1464,37 @@
             const slider = document.getElementById('speedSlider');
             const speedValue = parseInt(slider.value);
             
-            // 根据滑块值设置实际速度
             let actualSpeed = 1;
             let displayText = "1";
             
             switch(speedValue) {
                 case 1:
-                    actualSpeed = 1; // 1个/秒
+                    actualSpeed = 1;
                     displayText = "1";
                     break;
                 case 2:
-                    actualSpeed = 2; // 2个/秒
+                    actualSpeed = 2;
                     displayText = "2";
                     break;
                 case 3:
-                    actualSpeed = 5; // 5个/秒
+                    actualSpeed = 5;
                     displayText = "5";
                     break;
                 case 4:
-                    actualSpeed = 10; // 10个/秒
+                    actualSpeed = 10;
                     displayText = "10";
                     break;
                 case 5:
-                    actualSpeed = 20; // 20个/秒
+                    actualSpeed = 20;
                     displayText = "20";
                     break;
             }
             
             document.getElementById('speedValue').textContent = displayText;
-            generateSpeed = 1000 / actualSpeed; // 计算间隔时间
+            generateSpeed = 1000 / actualSpeed;
             
-            // 更新滑块显示值
-            slider.setAttribute('data-value', displayText);
-            
-            // 更新活动按钮
             updateSpeedButtons(displayText);
             
-            // 如果正在扫描，重新设置定时器
             if (isScanning) {
                 clearInterval(generateInterval);
                 generateInterval = setInterval(generateNext, generateSpeed);
@@ -1504,7 +1506,6 @@
         function setSpeed(speed) {
             const slider = document.getElementById('speedSlider');
             
-            // 设置滑块位置
             let sliderValue = 1;
             switch(speed) {
                 case "1": sliderValue = 1; break;
@@ -1768,10 +1769,10 @@
 
         // ==================== 队列处理 ====================
         function addToQueue(addressData) {
+            // 不再自动暂停，队列会一直运行
             if (pendingAddresses.length >= maxQueueSize) {
-                console.log("队列已满，暂停生成");
-                pauseScanner();
-                alert('待检测队列已满，请等待检测完成后再继续');
+                // 如果队列已满，只是记录日志，不暂停扫描
+                console.log(`队列已满 (${maxQueueSize})，等待处理中...`);
                 return false;
             }
             
@@ -1921,6 +1922,11 @@
             const startText = document.getElementById('startText');
             startText.textContent = '扫描中...';
             
+            // 显示暂停按钮，隐藏开始和继续按钮
+            startButton.style.display = 'none';
+            document.getElementById('pauseButton').style.display = 'flex';
+            document.getElementById('continueButton').style.display = 'none';
+            
             generateNext();
             generateInterval = setInterval(generateNext, generateSpeed);
             
@@ -1935,12 +1941,42 @@
                 clearInterval(generateInterval);
                 generateInterval = null;
             }
-            stopQueueProcessing();
+            // 停止生成新地址，但队列继续处理
+            // stopQueueProcessing(); // 注释掉这行，让队列继续运行
+            
+            // 显示继续按钮，隐藏暂停按钮
+            document.getElementById('pauseButton').style.display = 'none';
+            document.getElementById('continueButton').style.display = 'flex';
             
             const startText = document.getElementById('startText');
             startText.textContent = '开始扫描';
             
-            console.log("扫描已暂停");
+            console.log("扫描已暂停，队列继续处理");
+        }
+
+        function continueScanner() {
+            if (isScanning) return;
+            
+            if (!apiConnected) {
+                alert('请先等待API连接成功再继续扫描');
+                return;
+            }
+            
+            isScanning = true;
+            
+            const startButton = document.getElementById('startButton');
+            const startText = document.getElementById('startText');
+            startText.textContent = '扫描中...';
+            
+            // 显示暂停按钮，隐藏开始和继续按钮
+            startButton.style.display = 'none';
+            document.getElementById('pauseButton').style.display = 'flex';
+            document.getElementById('continueButton').style.display = 'none';
+            
+            generateNext();
+            generateInterval = setInterval(generateNext, generateSpeed);
+            
+            console.log(`扫描继续，速度: ${1000/generateSpeed}个/秒`);
         }
 
         function generateNext() {
@@ -1984,6 +2020,8 @@
             const added = addToQueue(addressData);
             
             if (!added) {
+                // 如果队列已满，等待一下再尝试
+                setTimeout(generateNext, 100);
                 return;
             }
             
@@ -2426,6 +2464,7 @@
 - 队列长度: ${pendingAddresses.length}
 - 扫描时间: ${scanStartTime ? Math.round((Date.now() - scanStartTime) / 1000) : 0}秒
 - 当前速度: ${1000/generateSpeed}个/秒
+- 扫描状态: ${isScanning ? '运行中' : '已暂停'}
             `.trim();
             
             alert(stats);
@@ -2480,6 +2519,11 @@
             updateSpeed();
             updateTotalBTC();
             updateQueueInfo();
+            
+            // 初始化按钮状态
+            document.getElementById('startButton').style.display = 'flex';
+            document.getElementById('pauseButton').style.display = 'none';
+            document.getElementById('continueButton').style.display = 'none';
             
             await testAllAPIs();
             
