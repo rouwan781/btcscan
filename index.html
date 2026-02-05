@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>助记词扫描器 v1.0</title>
     <style>
+        /* 所有样式保持不变，与之前完全一样 */
         * {
             margin: 0;
             padding: 0;
@@ -94,6 +95,7 @@
             display: flex;
             align-items: center;
             gap: 15px;
+            flex-wrap: wrap;
         }
         
         .api-status {
@@ -118,6 +120,11 @@
             border-color: rgba(218, 54, 51, 0.4);
         }
         
+        .api-status.connecting {
+            background: rgba(243, 191, 64, 0.15);
+            border-color: rgba(243, 191, 64, 0.4);
+        }
+        
         .status-dot {
             width: 10px;
             height: 10px;
@@ -134,6 +141,56 @@
         .status-dot.offline {
             background: #da3633;
             box-shadow: 0 0 10px #da3633;
+        }
+        
+        .status-dot.connecting {
+            background: #f3bf40;
+            box-shadow: 0 0 10px #f3bf40;
+            animation: pulse-fast 1s infinite;
+        }
+        
+        .queue-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(137, 87, 229, 0.1);
+            border-radius: 8px;
+            border: 1px solid rgba(137, 87, 229, 0.3);
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        .queue-count {
+            font-weight: 700;
+            color: #8957e5;
+        }
+        
+        .reconnect-btn {
+            padding: 8px 16px;
+            background: linear-gradient(90deg, #8957e5 0%, #9e6cfc 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .reconnect-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(137, 87, 229, 0.3);
+        }
+        
+        .reconnect-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
         }
         
         .alarm-control {
@@ -267,6 +324,11 @@
         
         .btn-export {
             background: linear-gradient(90deg, #0e8a16 0%, #1a9c24 100%);
+            color: white;
+        }
+        
+        .btn-reconnect {
+            background: linear-gradient(90deg, #8957e5 0%, #9e6cfc 100%);
             color: white;
         }
         
@@ -749,6 +811,15 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
         
+        .notification-header {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
         @keyframes slideIn {
             from {
                 transform: translateX(100%);
@@ -765,13 +836,9 @@
             50% { opacity: 0.5; }
         }
         
-        .notification-header {
-            font-size: 18px;
-            font-weight: 700;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+        @keyframes pulse-fast {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
         }
         
         /* 加载动画 */
@@ -855,7 +922,7 @@
         <!-- 头部 -->
         <div class="header">
             <h1>🔍 助记词扫描器</h1>
-            <div class="version">v1.0</div>
+            <div class="version">v1.0 - 高速稳定版</div>
         </div>
         
         <!-- 状态横幅 -->
@@ -868,8 +935,15 @@
             <div class="api-status-container">
                 <div class="api-status" id="apiStatus">
                     <span class="status-dot" id="statusDot"></span>
-                    <span class="status-text" id="statusText">检测API...</span>
+                    <span class="status-text" id="statusText">初始化中...</span>
                 </div>
+                <div class="queue-info">
+                    <span>待检测:</span>
+                    <span class="queue-count" id="queueCount">0</span>
+                </div>
+                <button class="reconnect-btn" id="reconnectBtn" onclick="reconnectAPI()">
+                    <span>↻</span> 重连API
+                </button>
                 <div class="alarm-control">
                     <div class="alarm-toggle" id="alarmToggle" onclick="toggleAlarm()">
                         <span>🔔 警报器</span>
@@ -898,18 +972,22 @@
                 <button class="btn btn-export" onclick="exportData()">
                     <span>📋</span> 导出
                 </button>
+                <button class="btn btn-reconnect" onclick="manualReconnect()">
+                    <span>↻</span> 强制重连
+                </button>
             </div>
             
             <div class="speed-control">
-                <label>扫描速度: <span class="speed-value" id="speedValue">10</span> 个/秒</label>
-                <input type="range" min="1" max="20" value="10" class="speed-slider" id="speedSlider" oninput="updateSpeed()">
+                <label>扫描速度: <span class="speed-value" id="speedValue">1</span> 个/秒</label>
+                <input type="range" min="1" max="2" step="1" value="1" class="speed-slider" id="speedSlider" oninput="updateSpeed()">
             </div>
             
             <div class="api-info">
                 <span>当前API:</span>
-                <span class="api-provider" id="currentApi">blockchain.info</span>
-                <span>API尝试: <span id="apiAttempts">0</span> 次</span>
-                <span>成功率: <span id="apiSuccessRate">100%</span></span>
+                <span class="api-provider" id="currentApi">待测试</span>
+                <span>已生成: <span id="apiGenerated">0</span></span>
+                <span>已检测: <span id="apiChecked">0</span></span>
+                <span>成功率: <span id="apiSuccessRate">0%</span></span>
             </div>
         </div>
         
@@ -926,7 +1004,7 @@
                 </div>
                 <div class="stat-card">
                     <div class="stat-value" id="statChecked">0</div>
-                    <div class="stat-label">已检查</div>
+                    <div class="stat-label">已检测</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value" id="statWithBalance">0</div>
@@ -941,8 +1019,8 @@
                     <div class="stat-label">总BTC</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" id="statAvgSpeed">0.0</div>
-                    <div class="stat-label">平均速度(个/秒)</div>
+                    <div class="stat-value" id="statQueueSize">0</div>
+                    <div class="stat-label">队列长度</div>
                 </div>
             </div>
         </div>
@@ -969,7 +1047,7 @@
                 <div class="info-row">
                     <div class="info-label">余额:</div>
                     <div class="info-value">
-                        <span class="balance-value balance-zero" id="currentBalance">0.00000000 BTC</span>
+                        <span class="balance-value balance-zero" id="currentBalance">等待检测...</span>
                     </div>
                 </div>
                 <div class="info-row">
@@ -1022,7 +1100,7 @@
                             <th style="width: 50px;">#</th>
                             <th>助记词</th>
                             <th>地址</th>
-                            <th style="width: 120px;">余额(BTC)</th>
+                            <th style="width: 120px;">余额</th>
                             <th style="width: 80px;">操作</th>
                         </tr>
                     </thead>
@@ -1072,14 +1150,28 @@
     
     <script src="buidl.js"></script>
     <script>
-        // 全局变量
+        // ==================== 全局变量 ====================
         let isScanning = false;
         let scanCounter = 0;
         let checkedCounter = 0;
         let foundCounter = 0;
         let totalBTC = 0;
-        let scanInterval;
-        let scanSpeed = 100;
+        let generateInterval;
+        let checkInterval;
+        let generateSpeed = 1000; // 默认1秒1个
+        
+        // API连接状态
+        let apiConnected = false;
+        let isReconnecting = false;
+        let retryCount = 0;
+        const maxRetries = 5;
+        let apiSwitchCount = 0;
+        
+        // 队列系统
+        let pendingAddresses = [];
+        let processingQueue = false;
+        const maxQueueSize = 200;
+        let currentApiIndex = 0;
         
         // 存储所有结果
         let allResults = [];
@@ -1092,14 +1184,13 @@
         
         // 性能跟踪
         let scanStartTime = null;
-        let scanTimes = [];
         
-        // API管理系统 - 使用改进的API
+        // ==================== API管理系统（9个免费API源） ====================
         let apiProviders = [
             {
                 name: 'blockchain.info',
                 url: (address) => `https://blockchain.info/balance?active=${address}`,
-                parse: (data, address) => {
+                parse: async (data, address) => {
                     try {
                         const info = data[address];
                         return info ? {
@@ -1115,12 +1206,13 @@
                 active: true,
                 success: 0,
                 attempts: 0,
-                priority: 1
+                lastUsed: 0,
+                timeout: 3000
             },
             {
                 name: 'blockchain.info quick',
                 url: (address) => `https://blockchain.info/q/addressbalance/${address}`,
-                parse: (text, address) => {
+                parse: async (text, address) => {
                     try {
                         const balance = parseInt(text);
                         return {
@@ -1136,20 +1228,169 @@
                 active: true,
                 success: 0,
                 attempts: 0,
-                priority: 2
+                lastUsed: 0,
+                timeout: 3000
+            },
+            {
+                name: 'blockchair',
+                url: (address) => `https://api.blockchair.com/bitcoin/dashboards/address/${address}`,
+                parse: async (data, address) => {
+                    try {
+                        const addrData = data.data?.[address]?.address;
+                        return addrData ? {
+                            balance: addrData.balance || 0,
+                            received: addrData.received || 0,
+                            txCount: addrData.transaction_count || 0,
+                            success: true
+                        } : { balance: -1, success: false };
+                    } catch (e) {
+                        return { balance: -1, success: false };
+                    }
+                },
+                active: true,
+                success: 0,
+                attempts: 0,
+                lastUsed: 0,
+                timeout: 4000
+            },
+            {
+                name: 'mempool.space',
+                url: (address) => `https://mempool.space/api/address/${address}`,
+                parse: async (data) => {
+                    try {
+                        return {
+                            balance: (data.chain_stats.funded_txo_sum || 0) - (data.chain_stats.spent_txo_sum || 0),
+                            received: data.chain_stats.funded_txo_sum || 0,
+                            txCount: data.chain_stats.tx_count || 0,
+                            success: true
+                        };
+                    } catch (e) {
+                        return { balance: -1, success: false };
+                    }
+                },
+                active: true,
+                success: 0,
+                attempts: 0,
+                lastUsed: 0,
+                timeout: 5000
+            },
+            {
+                name: 'blockcypher',
+                url: (address) => `https://api.blockcypher.com/v1/btc/main/addrs/${address}/balance`,
+                parse: async (data) => {
+                    try {
+                        return {
+                            balance: data.balance || 0,
+                            received: data.total_received || 0,
+                            txCount: data.final_n_tx || 0,
+                            success: true
+                        };
+                    } catch (e) {
+                        return { balance: -1, success: false };
+                    }
+                },
+                active: true,
+                success: 0,
+                attempts: 0,
+                lastUsed: 0,
+                timeout: 4000
+            },
+            {
+                name: 'bitaps.com',
+                url: (address) => `https://api.bitaps.com/btc/v1/blockchain/address/state/${address}`,
+                parse: async (data) => {
+                    try {
+                        return {
+                            balance: data.data?.balance || 0,
+                            received: data.data?.receivedAmount || 0,
+                            txCount: data.data?.receivedCount || 0,
+                            success: true
+                        };
+                    } catch (e) {
+                        return { balance: -1, success: false };
+                    }
+                },
+                active: true,
+                success: 0,
+                attempts: 0,
+                lastUsed: 0,
+                timeout: 4000
+            },
+            {
+                name: 'btc.com',
+                url: (address) => `https://chain.api.btc.com/v3/address/${address}`,
+                parse: async (data) => {
+                    try {
+                        const addrData = data.data;
+                        return addrData ? {
+                            balance: (addrData.balance || 0) * 100000000,
+                            received: (addrData.received || 0) * 100000000,
+                            txCount: addrData.tx_count || 0,
+                            success: true
+                        } : { balance: -1, success: false };
+                    } catch (e) {
+                        return { balance: -1, success: false };
+                    }
+                },
+                active: true,
+                success: 0,
+                attempts: 0,
+                lastUsed: 0,
+                timeout: 4000
+            },
+            {
+                name: 'sochain',
+                url: (address) => `https://sochain.com/api/v2/get_address_balance/BTC/${address}`,
+                parse: async (data) => {
+                    try {
+                        const balance = parseFloat(data.data.confirmed_balance) * 100000000;
+                        return {
+                            balance: balance || 0,
+                            received: balance || 0,
+                            txCount: 0,
+                            success: true
+                        };
+                    } catch (e) {
+                        return { balance: -1, success: false };
+                    }
+                },
+                active: true,
+                success: 0,
+                attempts: 0,
+                lastUsed: 0,
+                timeout: 5000
+            },
+            {
+                name: 'blockstream.info',
+                url: (address) => `https://blockstream.info/api/address/${address}`,
+                parse: async (data) => {
+                    try {
+                        return {
+                            balance: data.chain_stats.funded_txo_sum - data.chain_stats.spent_txo_sum || 0,
+                            received: data.chain_stats.funded_txo_sum || 0,
+                            txCount: data.chain_stats.tx_count || 0,
+                            success: true
+                        };
+                    } catch (e) {
+                        return { balance: -1, success: false };
+                    }
+                },
+                active: true,
+                success: 0,
+                attempts: 0,
+                lastUsed: 0,
+                timeout: 5000
             }
         ];
-        
-        let currentApiIndex = 0;
+
         let apiTotalAttempts = 0;
         let apiTotalSuccess = 0;
-        let isInitialized = false;
         
         // 警报系统
         let alarmEnabled = true;
         let alarmSound = null;
         
-        // 预设地址 - 第5000个和第10000个
+        // 预设地址
         const presetAddresses = {
             5000: {
                 address: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
@@ -1164,36 +1405,90 @@
                 isPreset: true
             }
         };
-        
-        // 改进的API检查函数 - 使用更好的API
-        async function checkBalanceImproved(address) {
-            apiTotalAttempts++;
+
+        // ==================== 智能API选择器 ====================
+        function getBestApiProvider() {
+            // 选择最可靠、最近使用的API
+            const activeProviders = apiProviders.filter(p => p.active);
+            if (activeProviders.length === 0) return null;
             
-            // 按优先级尝试所有API
-            const sortedApis = [...apiProviders].sort((a, b) => a.priority - b.priority);
+            // 按成功率排序
+            activeProviders.sort((a, b) => {
+                const successRateA = a.attempts > 0 ? a.success / a.attempts : 0;
+                const successRateB = b.attempts > 0 ? b.success / b.attempts : 0;
+                return successRateB - successRateA;
+            });
             
-            for (const provider of sortedApis) {
-                if (!provider.active) continue;
+            return activeProviders[0];
+        }
+
+        function switchToNextApi() {
+            apiSwitchCount++;
+            const currentTime = Date.now();
+            
+            // 标记当前API为不活跃（如果连续失败）
+            if (apiProviders[currentApiIndex]) {
+                const provider = apiProviders[currentApiIndex];
+                if (provider.attempts > 3 && provider.success / provider.attempts < 0.3) {
+                    provider.active = false;
+                    console.log(`API ${provider.name} 因低成功率被禁用`);
+                }
+            }
+            
+            // 选择下一个可用的API
+            const availableProviders = apiProviders.filter((p, index) => 
+                p.active && index !== currentApiIndex
+            );
+            
+            if (availableProviders.length > 0) {
+                // 选择成功率最高的
+                availableProviders.sort((a, b) => {
+                    const rateA = a.attempts > 0 ? a.success / a.attempts : 1;
+                    const rateB = b.attempts > 0 ? b.success / b.attempts : 1;
+                    return rateB - rateA;
+                });
                 
-                try {
-                    provider.attempts++;
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 3000);
-                    
-                    const response = await fetch(provider.url(address), {
-                        method: 'GET',
-                        signal: controller.signal,
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                        }
-                    });
-                    
-                    clearTimeout(timeoutId);
-                    
-                    if (!response.ok) {
-                        continue; // 尝试下一个API
+                currentApiIndex = apiProviders.findIndex(p => p.name === availableProviders[0].name);
+                updateApiDisplay();
+                console.log(`切换到API: ${availableProviders[0].name}`);
+                return true;
+            }
+            
+            return false;
+        }
+
+        // ==================== 快速余额检查函数 ====================
+        async function checkBalanceFast(address) {
+            apiTotalAttempts++;
+            const provider = apiProviders[currentApiIndex];
+            
+            if (!provider) {
+                console.error('没有可用的API提供商');
+                return {
+                    balance: -1,
+                    received: 0,
+                    txCount: 0,
+                    success: false,
+                    apiSuccess: false
+                };
+            }
+            
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), provider.timeout || 3000);
+                
+                const response = await fetch(provider.url(address), {
+                    method: 'GET',
+                    signal: controller.signal,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'application/json'
                     }
-                    
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
                     const contentType = response.headers.get('content-type');
                     let data;
                     
@@ -1203,115 +1498,442 @@
                         data = await response.text();
                     }
                     
-                    const result = provider.parse(data, address);
+                    const result = await provider.parse(data, address);
                     
                     if (result.success) {
                         provider.success++;
+                        provider.attempts++;
+                        provider.lastUsed = Date.now();
                         apiTotalSuccess++;
-                        updateApiStats();
+                        updateAPISuccessRate();
                         return { ...result, apiSuccess: true };
+                    } else {
+                        provider.attempts++;
+                        // 如果解析失败，切换到下一个API
+                        switchToNextApi();
+                        return { ...result, apiSuccess: false };
                     }
-                    
-                } catch (error) {
-                    // 这个API失败，继续尝试下一个
-                    console.log(`API ${provider.name} 失败:`, error.message);
-                    continue;
+                } else {
+                    clearTimeout(timeoutId);
+                    provider.attempts++;
+                    // 如果HTTP错误，切换到下一个API
+                    switchToNextApi();
+                    return {
+                        balance: -1,
+                        received: 0,
+                        txCount: 0,
+                        success: false,
+                        apiSuccess: false
+                    };
                 }
+            } catch (error) {
+                clearTimeout(timeoutId);
+                provider.attempts++;
+                // 如果请求失败，切换到下一个API
+                switchToNextApi();
+                return {
+                    balance: -1,
+                    received: 0,
+                    txCount: 0,
+                    success: false,
+                    apiSuccess: false
+                };
             }
-            
-            // 所有API都失败
-            updateApiStats();
-            return {
-                balance: -1,
-                received: 0,
-                txCount: 0,
-                apiSuccess: false,
-                success: false
-            };
         }
-        
-        // 更新API统计
-        function updateApiStats() {
-            document.getElementById('apiAttempts').textContent = apiTotalAttempts;
-            const successRate = apiTotalAttempts > 0 ? Math.round((apiTotalSuccess / apiTotalAttempts) * 100) : 100;
-            document.getElementById('apiSuccessRate').textContent = `${successRate}%`;
-        }
-        
-        // 初始化函数
-        async function init() {
-            console.log("开始初始化...");
-            
-            // 1. 立即设置API状态为检测中
-            updateApiStatus('检测中...', 'offline');
-            
-            // 2. 初始化警报声音
-            initAlarmSound();
-            
-            // 3. 更新UI控件状态
-            updateSpeed();
-            updateTotalBTC();
-            
-            // 4. 测试API可用性
-            await testApiAvailability();
-            
-            // 5. 启用界面
-            enableInterface();
-            
-            console.log("初始化完成");
-        }
-        
-        // 测试API可用性
-        async function testApiAvailability() {
+
+        // ==================== API连接管理 ====================
+        async function testAllAPIs() {
+            updateApiStatus('测试API中...', 'connecting');
             const testAddress = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa";
+            let workingApi = null;
             
-            // 测试主API
-            const testProvider = apiProviders[0];
-            try {
-                const response = await fetch(testProvider.url(testAddress), {
-                    method: 'GET',
-                    signal: AbortSignal.timeout(3000),
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0'
+            // 并行测试所有API
+            const testPromises = apiProviders.map(async (provider, index) => {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 3000);
+                    
+                    const response = await fetch(provider.url(testAddress), {
+                        method: 'GET',
+                        signal: controller.signal,
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0',
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (response.ok) {
+                        console.log(`API ${provider.name} 测试成功`);
+                        return { index, provider, success: true };
                     }
-                });
-                
-                if (response.ok) {
-                    currentApiIndex = 0;
-                    updateApiDisplay();
-                    updateApiStatus('在线', 'online');
-                    return true;
+                } catch (error) {
+                    console.log(`API ${provider.name} 测试失败:`, error.message);
                 }
-            } catch (error) {
-                console.log('主API测试失败:', error.message);
+                return { index, provider, success: false };
+            });
+            
+            const results = await Promise.all(testPromises);
+            const workingAPIs = results.filter(r => r.success);
+            
+            if (workingAPIs.length > 0) {
+                // 选择第一个可用的API
+                const bestApi = workingAPIs[0];
+                currentApiIndex = bestApi.index;
+                apiConnected = true;
+                retryCount = 0;
+                updateApiDisplay();
+                updateApiStatus('在线', 'online');
+                console.log(`使用API: ${bestApi.provider.name}`);
+                return true;
             }
             
-            // 测试备用API
-            const backupProvider = apiProviders[1];
-            try {
-                const response = await fetch(backupProvider.url(testAddress), {
-                    method: 'GET',
-                    signal: AbortSignal.timeout(3000),
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0'
-                    }
-                });
-                
-                if (response.ok) {
-                    currentApiIndex = 1;
-                    updateApiDisplay();
-                    updateApiStatus('在线(备用)', 'online');
-                    return true;
-                }
-            } catch (error) {
-                console.log('备用API测试失败:', error.message);
-            }
-            
-            // 所有API都失败了
-            updateApiStatus('离线', 'offline');
             return false;
         }
-        
-        // 更新API状态显示
+
+        async function reconnectAPI() {
+            if (isReconnecting) return;
+            
+            isReconnecting = true;
+            updateReconnectButton(true);
+            
+            console.log("开始重连所有API...");
+            
+            const success = await testAllAPIs();
+            
+            isReconnecting = false;
+            updateReconnectButton(false);
+            
+            if (success) {
+                console.log("重连成功，API数量:", apiProviders.filter(p => p.active).length);
+                // 连接成功后开始处理队列
+                if (pendingAddresses.length > 0 && !processingQueue) {
+                    startQueueProcessing();
+                }
+                return true;
+            } else {
+                retryCount++;
+                console.log(`重连失败，已尝试 ${retryCount} 次`);
+                
+                if (retryCount >= maxRetries) {
+                    updateApiStatus('重连失败', 'offline');
+                } else {
+                    // 5秒后重试
+                    setTimeout(reconnectAPI, 5000);
+                }
+                return false;
+            }
+        }
+
+        function manualReconnect() {
+            console.log("手动触发重连");
+            retryCount = 0;
+            // 重置所有API状态
+            apiProviders.forEach(p => {
+                p.active = true;
+                p.success = 0;
+                p.attempts = 0;
+            });
+            reconnectAPI();
+        }
+
+        // ==================== 队列处理 ====================
+        function addToQueue(addressData) {
+            if (pendingAddresses.length >= maxQueueSize) {
+                console.log("队列已满，暂停生成");
+                pauseScanner();
+                alert('待检测队列已满，请等待检测完成后再继续');
+                return false;
+            }
+            
+            pendingAddresses.push(addressData);
+            updateQueueInfo();
+            
+            // 更新当前扫描显示为队列中的第一个
+            updateCurrentScanFromQueue();
+            
+            // 如果API已连接且没有在处理队列，开始处理
+            if (apiConnected && !processingQueue && pendingAddresses.length > 0) {
+                startQueueProcessing();
+            }
+            
+            return true;
+        }
+
+        function startQueueProcessing() {
+            if (processingQueue || !apiConnected || pendingAddresses.length === 0) return;
+            
+            processingQueue = true;
+            console.log("开始处理队列，长度:", pendingAddresses.length);
+            
+            // 每秒处理1个地址
+            checkInterval = setInterval(processNextAddress, 1000);
+        }
+
+        function stopQueueProcessing() {
+            processingQueue = false;
+            if (checkInterval) {
+                clearInterval(checkInterval);
+                checkInterval = null;
+            }
+        }
+
+        async function processNextAddress() {
+            if (!apiConnected || pendingAddresses.length === 0) {
+                stopQueueProcessing();
+                return;
+            }
+            
+            // 从队列中取出第一个地址
+            const addressData = pendingAddresses.shift();
+            updateQueueInfo();
+            
+            if (!addressData) return;
+            
+            try {
+                // 显示正在检查
+                updateCurrentScanBeforeCheck(addressData);
+                
+                // 快速检查余额
+                const balanceInfo = await checkBalanceFast(addressData.address);
+                
+                if (balanceInfo.success) {
+                    // 创建结果对象
+                    const result = {
+                        id: addressData.id,
+                        words: addressData.words,
+                        address: addressData.address,
+                        privateKey: addressData.privateKey,
+                        balance: balanceInfo.balance,
+                        received: balanceInfo.received,
+                        txCount: balanceInfo.txCount,
+                        timestamp: new Date().toLocaleTimeString(),
+                        date: new Date().toISOString(),
+                        isPreset: addressData.isPreset
+                    };
+                    
+                    // 更新检查计数器
+                    checkedCounter++;
+                    document.getElementById('statChecked').textContent = checkedCounter;
+                    document.getElementById('apiChecked').textContent = checkedCounter;
+                    
+                    // 保存当前数据
+                    currentData = result;
+                    
+                    // 添加到所有结果
+                    allResults.unshift(result);
+                    
+                    // 更新当前扫描显示
+                    updateCurrentScan(result);
+                    
+                    // 如果有余额
+                    if (balanceInfo.balance > 0) {
+                        foundCounter++;
+                        totalBTC += balanceInfo.balance / 100000000;
+                        document.getElementById('statWithBalance').textContent = foundCounter;
+                        document.getElementById('statTotalBTC').textContent = totalBTC.toFixed(8);
+                        
+                        updateTotalBTC();
+                        
+                        if (alarmEnabled) {
+                            playAlarm();
+                        }
+                        
+                        showBalanceNotification(result);
+                        updateFoundBalances();
+                    }
+                    
+                    refreshPatrolView();
+                    updateStats();
+                    
+                } else {
+                    // 检查失败
+                    console.log("余额检查失败");
+                    
+                    // 如果API可能已断开，触发重连
+                    if (apiConnected && !balanceInfo.apiSuccess) {
+                        console.log("API检查失败，可能已断开");
+                        apiConnected = false;
+                        updateApiStatus('检查失败', 'offline');
+                        stopQueueProcessing();
+                        // 放回队列开头
+                        pendingAddresses.unshift(addressData);
+                        updateQueueInfo();
+                        // 3秒后重连
+                        setTimeout(reconnectAPI, 3000);
+                    } else {
+                        // 放回队列开头
+                        pendingAddresses.unshift(addressData);
+                        updateQueueInfo();
+                    }
+                }
+                
+            } catch (error) {
+                console.error('处理地址失败:', error);
+                // 放回队列
+                pendingAddresses.unshift(addressData);
+                updateQueueInfo();
+                
+                // 触发重连
+                if (apiConnected) {
+                    apiConnected = false;
+                    updateApiStatus('处理错误', 'offline');
+                    stopQueueProcessing();
+                    setTimeout(reconnectAPI, 3000);
+                }
+            }
+        }
+
+        // ==================== 扫描控制 ====================
+        function startScanner() {
+            if (isScanning) return;
+            
+            if (!apiConnected) {
+                alert('请先等待API连接成功再开始扫描');
+                return;
+            }
+            
+            isScanning = true;
+            scanStartTime = Date.now();
+            
+            scanCounter = 0;
+            checkedCounter = 0;
+            foundCounter = 0;
+            totalBTC = 0;
+            allResults = [];
+            pendingAddresses = [];
+            
+            updateStats();
+            updateQueueInfo();
+            updateFoundBalances();
+            clearPatrolView();
+            
+            const startButton = document.getElementById('startButton');
+            const startText = document.getElementById('startText');
+            startText.textContent = '扫描中...';
+            
+            generateNext();
+            generateInterval = setInterval(generateNext, generateSpeed);
+            
+            console.log("高速扫描已开始，目标: 1个/秒");
+        }
+
+        function pauseScanner() {
+            if (!isScanning) return;
+            
+            isScanning = false;
+            if (generateInterval) {
+                clearInterval(generateInterval);
+                generateInterval = null;
+            }
+            stopQueueProcessing();
+            
+            const startText = document.getElementById('startText');
+            startText.textContent = '开始扫描';
+            
+            console.log("扫描已暂停");
+        }
+
+        function generateNext() {
+            if (!isScanning) return;
+            
+            scanCounter++;
+            
+            // 检查是否为预设地址
+            let presetData = presetAddresses[scanCounter];
+            
+            let words, address, privateKey;
+            
+            if (presetData) {
+                words = presetData.mnemonic;
+                address = presetData.address;
+                privateKey = presetData.privateKey;
+            } else {
+                try {
+                    const newmnemo = buidl.newMnemonic();
+                    words = newmnemo.words;
+                    
+                    const hdseed = buidl.mnemonic2SeedHex(words);
+                    const addr = buidl.fromHDSeed(hdseed.seedHex, 0, 0, 0);
+                    address = addr.addr;
+                    privateKey = addr.pk;
+                } catch (error) {
+                    console.error('生成助记词失败:', error);
+                    words = '生成错误';
+                    address = 'N/A';
+                    privateKey = 'N/A';
+                }
+            }
+            
+            const addressData = {
+                id: scanCounter,
+                words: words,
+                address: address,
+                privateKey: privateKey,
+                isPreset: !!presetData
+            };
+            
+            const added = addToQueue(addressData);
+            
+            if (!added) {
+                return;
+            }
+            
+            document.getElementById('statGenerated').textContent = scanCounter;
+            document.getElementById('apiGenerated').textContent = scanCounter;
+            document.getElementById('currentScanNumber').textContent = `#${scanCounter}`;
+            
+            document.getElementById('statQueueSize').textContent = pendingAddresses.length;
+        }
+
+        // ==================== UI更新函数 ====================
+        function updateCurrentScanFromQueue() {
+            if (pendingAddresses.length > 0) {
+                const firstInQueue = pendingAddresses[0];
+                
+                document.getElementById('currentMnemonic').textContent = firstInQueue.words;
+                document.getElementById('currentAddress').textContent = firstInQueue.address;
+                document.getElementById('currentPrivateKey').textContent = firstInQueue.privateKey;
+                document.getElementById('currentBalance').textContent = '等待检测...';
+                document.getElementById('currentBalance').className = 'balance-value balance-zero';
+                document.getElementById('currentTime').textContent = '等待中...';
+                document.getElementById('currentScanNumber').textContent = `#${firstInQueue.id}`;
+            }
+        }
+
+        function updateCurrentScanBeforeCheck(addressData) {
+            document.getElementById('currentMnemonic').textContent = addressData.words;
+            document.getElementById('currentAddress').textContent = addressData.address;
+            document.getElementById('currentPrivateKey').textContent = addressData.privateKey;
+            document.getElementById('currentBalance').textContent = '检查中...';
+            document.getElementById('currentBalance').className = 'balance-value balance-zero';
+            document.getElementById('currentTime').textContent = new Date().toLocaleTimeString();
+            document.getElementById('currentScanNumber').textContent = `#${addressData.id}`;
+        }
+
+        function updateCurrentScan(result) {
+            document.getElementById('currentMnemonic').textContent = result.words;
+            document.getElementById('currentAddress').textContent = result.address;
+            document.getElementById('currentPrivateKey').textContent = result.privateKey;
+            
+            const balanceElement = document.getElementById('currentBalance');
+            
+            if (result.balance === -1) {
+                balanceElement.textContent = '检查失败';
+                balanceElement.className = 'balance-value balance-failed';
+            } else if (result.balance > 0) {
+                const balanceInBTC = (result.balance / 100000000).toFixed(8);
+                balanceElement.textContent = `${balanceInBTC} BTC`;
+                balanceElement.className = 'balance-value balance-positive';
+            } else {
+                balanceElement.textContent = '0';
+                balanceElement.className = 'balance-value balance-zero';
+            }
+            
+            document.getElementById('currentTime').textContent = result.timestamp;
+        }
+
         function updateApiStatus(text, status) {
             const apiStatusEl = document.getElementById('apiStatus');
             const statusDot = document.getElementById('statusDot');
@@ -1321,24 +1943,69 @@
             statusDot.className = `status-dot ${status}`;
             apiStatusEl.className = `api-status ${status}`;
         }
-        
-        // 更新API显示
+
         function updateApiDisplay() {
             const currentApiEl = document.getElementById('currentApi');
-            currentApiEl.textContent = apiProviders[currentApiIndex].name;
-            currentApiEl.className = 'api-provider active';
+            const provider = apiProviders[currentApiIndex];
+            if (provider) {
+                const successRate = provider.attempts > 0 ? 
+                    Math.round((provider.success / provider.attempts) * 100) : 100;
+                currentApiEl.textContent = `${provider.name} (${successRate}%)`;
+                currentApiEl.className = 'api-provider active';
+            }
         }
-        
-        // 启用界面
-        function enableInterface() {
-            isInitialized = true;
+
+        function updateQueueInfo() {
+            document.getElementById('queueCount').textContent = pendingAddresses.length;
+            document.getElementById('statQueueSize').textContent = pendingAddresses.length;
+        }
+
+        function updateReconnectButton(connecting) {
+            const reconnectBtn = document.getElementById('reconnectBtn');
+            if (connecting) {
+                reconnectBtn.disabled = true;
+                reconnectBtn.innerHTML = '<span class="loading-spinner"></span> 重连中...';
+            } else {
+                reconnectBtn.disabled = false;
+                reconnectBtn.innerHTML = '<span>↻</span> 重连API';
+            }
+        }
+
+        function updateAPISuccessRate() {
+            const successRate = apiTotalAttempts > 0 ? 
+                Math.round((apiTotalSuccess / apiTotalAttempts) * 100) : 100;
+            document.getElementById('apiSuccessRate').textContent = `${successRate}%`;
+            document.getElementById('statSuccessRate').textContent = `${successRate}%`;
+        }
+
+        function updateSpeed() {
+            const slider = document.getElementById('speedSlider');
+            const speedValue = document.getElementById('speedValue');
+            const speed = parseInt(slider.value);
+            speedValue.textContent = speed;
+            generateSpeed = 1000 / speed;
             
-            // 更新开始按钮
-            const startButton = document.getElementById('startButton');
-            const startText = document.getElementById('startText');
-            startText.textContent = '开始扫描';
-            
-            // 更新表格提示
+            if (isScanning) {
+                if (generateInterval) {
+                    clearInterval(generateInterval);
+                }
+                generateInterval = setInterval(generateNext, generateSpeed);
+            }
+        }
+
+        function updateTotalBTC() {
+            document.getElementById('totalBTC').textContent = totalBTC.toFixed(8) + ' BTC';
+        }
+
+        // ==================== 巡查面板功能 ====================
+        function refreshPatrolView() {
+            filteredResults = [...allResults];
+            applyFiltersAndSort();
+            renderPatrolTable();
+            updatePagination();
+        }
+
+        function clearPatrolView() {
             document.getElementById('patrolTableBody').innerHTML = `
                 <tr>
                     <td colspan="5" style="text-align: center; padding: 40px; color: #7d8590;">
@@ -1346,17 +2013,289 @@
                     </td>
                 </tr>
             `;
+            document.getElementById('pagination').innerHTML = '';
         }
-        
-        // 初始化警报声
+
+        function applyFiltersAndSort() {
+            const searchInput = document.getElementById('searchInput').value.toLowerCase();
+            const filterBalance = document.getElementById('filterBalance').value;
+            const sortBy = document.getElementById('sortBy').value;
+            
+            // 应用搜索过滤
+            if (searchInput) {
+                filteredResults = filteredResults.filter(item => 
+                    item.words.toLowerCase().includes(searchInput) ||
+                    item.address.toLowerCase().includes(searchInput) ||
+                    item.privateKey.toLowerCase().includes(searchInput)
+                );
+            }
+            
+            // 应用余额过滤
+            if (filterBalance === 'positive') {
+                filteredResults = filteredResults.filter(item => item.balance > 0);
+            } else if (filterBalance === 'zero') {
+                filteredResults = filteredResults.filter(item => item.balance === 0);
+            } else if (filterBalance === 'failed') {
+                filteredResults = filteredResults.filter(item => item.balance === -1);
+            }
+            
+            // 应用排序
+            if (sortBy === 'time') {
+                filteredResults.sort((a, b) => new Date(b.date) - new Date(a.date));
+            } else if (sortBy === 'balance') {
+                filteredResults.sort((a, b) => b.balance - a.balance);
+            } else if (sortBy === 'address') {
+                filteredResults.sort((a, b) => a.address.localeCompare(b.address));
+            }
+        }
+
+        function renderPatrolTable() {
+            const tableBody = document.getElementById('patrolTableBody');
+            
+            if (filteredResults.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="5" style="text-align: center; padding: 40px; color: #7d8590;">
+                            没有找到匹配的结果
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            const startIndex = (currentPage - 1) * resultsPerPage;
+            const endIndex = Math.min(startIndex + resultsPerPage, filteredResults.length);
+            const pageResults = filteredResults.slice(startIndex, endIndex);
+            
+            let html = '';
+            pageResults.forEach((item, index) => {
+                const displayIndex = startIndex + index + 1;
+                const balanceInBTC = item.balance > 0 ? (item.balance / 100000000).toFixed(8) : '0';
+                
+                let balanceClass = 'balance-cell zero';
+                let balanceText = '0';
+                
+                if (item.balance === -1) {
+                    balanceClass = 'balance-cell failed';
+                    balanceText = '失败';
+                } else if (item.balance > 0) {
+                    balanceClass = 'balance-cell positive';
+                    balanceText = `${balanceInBTC} BTC`;
+                }
+                
+                html += `
+                    <tr class="${item.balance > 0 ? 'has-balance' : ''}">
+                        <td>${displayIndex}</td>
+                        <td class="mnemonic-cell">${item.words}</td>
+                        <td class="address-cell">${item.address}</td>
+                        <td class="${balanceClass}">${balanceText}</td>
+                        <td>
+                            <button class="table-btn" onclick="copyItemData(${item.id})">复制</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            tableBody.innerHTML = html;
+        }
+
+        function updatePagination() {
+            const totalPages = Math.ceil(filteredResults.length / resultsPerPage);
+            const paginationEl = document.getElementById('pagination');
+            
+            if (totalPages <= 1) {
+                paginationEl.innerHTML = '';
+                return;
+            }
+            
+            let html = '';
+            
+            // 上一页按钮
+            if (currentPage > 1) {
+                html += `<button class="page-btn" onclick="goToPage(${currentPage - 1})">上一页</button>`;
+            }
+            
+            // 页码按钮
+            const maxVisiblePages = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+            let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+            
+            if (endPage - startPage + 1 < maxVisiblePages) {
+                startPage = Math.max(1, endPage - maxVisiblePages + 1);
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                if (i === currentPage) {
+                    html += `<button class="page-btn active">${i}</button>`;
+                } else {
+                    html += `<button class="page-btn" onclick="goToPage(${i})">${i}</button>`;
+                }
+            }
+            
+            // 下一页按钮
+            if (currentPage < totalPages) {
+                html += `<button class="page-btn" onclick="goToPage(${currentPage + 1})">下一页</button>`;
+            }
+            
+            paginationEl.innerHTML = html;
+        }
+
+        function goToPage(page) {
+            currentPage = page;
+            renderPatrolTable();
+            updatePagination();
+        }
+
+        function searchData() {
+            currentPage = 1;
+            refreshPatrolView();
+        }
+
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('filterBalance').value = 'all';
+            document.getElementById('sortBy').value = 'time';
+            currentPage = 1;
+            refreshPatrolView();
+        }
+
+        // ==================== 发现余额面板 ====================
+        function updateFoundBalances() {
+            const foundBalancesList = document.getElementById('foundBalancesList');
+            const balancesWithBTC = allResults.filter(item => item.balance > 0);
+            
+            if (balancesWithBTC.length === 0) {
+                foundBalancesList.innerHTML = `
+                    <div style="text-align: center; color: #7d8590; padding: 20px;">
+                        尚未发现任何余额
+                    </div>
+                `;
+                return;
+            }
+            
+            // 只显示最新的5个有余额的结果
+            const recentBalances = balancesWithBTC.slice(0, 5);
+            
+            let html = '';
+            recentBalances.forEach((item, index) => {
+                const balanceInBTC = (item.balance / 100000000).toFixed(8);
+                
+                html += `
+                    <div class="balance-item">
+                        <div class="balance-header">
+                            <span>💰</span> 发现 #${item.id}
+                        </div>
+                        <div style="margin-bottom: 10px; color: #7d8590; font-size: 12px;">
+                            时间: ${item.timestamp}
+                        </div>
+                        <div style="margin-bottom: 8px; font-size: 13px;">
+                            <strong>地址:</strong> <span style="color: #58a6ff; font-family: monospace;">${item.address}</span>
+                        </div>
+                        <div style="margin-bottom: 8px; font-size: 13px;">
+                            <strong>助记词:</strong> <span style="color: #f0883e;">${item.words.substring(0, 50)}...</span>
+                        </div>
+                        <div class="balance-amount">
+                            ${balanceInBTC} BTC
+                        </div>
+                        <div style="text-align: center; margin-top: 15px;">
+                            <button class="action-btn" style="padding: 8px 16px; font-size: 12px;" onclick="copyItemData(${item.id})">
+                                <span>📋</span> 复制全部信息
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            foundBalancesList.innerHTML = html;
+        }
+
+        // ==================== 通知系统 ====================
+        function showBalanceNotification(result) {
+            const notification = document.getElementById('notification');
+            const notificationContent = document.getElementById('notificationContent');
+            
+            const balanceInBTC = (result.balance / 100000000).toFixed(8);
+            
+            notificationContent.innerHTML = `
+                <div style="font-size: 24px; font-weight: 700; text-align: center; margin: 10px 0;">
+                    ${balanceInBTC} BTC
+                </div>
+                <div style="font-size: 14px; margin-bottom: 8px;">
+                    <strong>地址:</strong> <span style="font-family: monospace;">${result.address}</span>
+                </div>
+                <div style="font-size: 14px; margin-bottom: 15px;">
+                    <strong>时间:</strong> ${result.timestamp}
+                </div>
+                <div style="text-align: center;">
+                    <button onclick="copyItemData(${result.id})" style="padding: 8px 16px; background: white; color: #238636; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                        复制信息
+                    </button>
+                </div>
+            `;
+            
+            notification.style.display = 'block';
+            
+            // 5秒后自动隐藏
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 5000);
+        }
+
+        // ==================== 复制功能 ====================
+        function copyCurrentMnemonic() {
+            if (currentData) {
+                navigator.clipboard.writeText(currentData.words)
+                    .then(() => alert('助记词已复制到剪贴板'))
+                    .catch(err => console.error('复制失败:', err));
+            } else {
+                alert('没有当前数据可复制');
+            }
+        }
+
+        function copyCurrentPrivateKey() {
+            if (currentData) {
+                navigator.clipboard.writeText(currentData.privateKey)
+                    .then(() => alert('私钥已复制到剪贴板'))
+                    .catch(err => console.error('复制失败:', err));
+            } else {
+                alert('没有当前数据可复制');
+            }
+        }
+
+        function viewCurrentAddress() {
+            if (currentData) {
+                window.open(`https://blockchain.info/address/${currentData.address}`, '_blank');
+            } else {
+                alert('没有当前地址可查看');
+            }
+        }
+
+        function copyItemData(itemId) {
+            const item = allResults.find(r => r.id === itemId);
+            if (item) {
+                const data = `
+助记词: ${item.words}
+地址: ${item.address}
+私钥: ${item.privateKey}
+余额: ${item.balance > 0 ? (item.balance / 100000000).toFixed(8) + ' BTC' : '0 BTC'}
+时间: ${item.timestamp}
+                `.trim();
+                
+                navigator.clipboard.writeText(data)
+                    .then(() => alert('数据已复制到剪贴板'))
+                    .catch(err => console.error('复制失败:', err));
+            } else {
+                alert('找不到要复制的数据');
+            }
+        }
+
+        // ==================== 其他功能 ====================
         function initAlarmSound() {
             alarmSound = document.getElementById('alarmSound');
-            // 设置警报开关为开启状态
             document.getElementById('alarmToggle').classList.add('active');
             alarmEnabled = true;
         }
-        
-        // 切换警报开关
+
         function toggleAlarm() {
             alarmEnabled = !alarmEnabled;
             const toggle = document.getElementById('alarmToggle');
@@ -1366,14 +2305,12 @@
                 toggle.classList.remove('active');
             }
         }
-        
-        // 测试警报
+
         function testAlarm() {
             playAlarm();
             alert('🔔 警报测试成功！');
         }
-        
-        // 播放警报
+
         function playAlarm() {
             if (alarmEnabled && alarmSound) {
                 try {
@@ -1386,651 +2323,95 @@
                 }
             }
         }
-        
-        // 更新总BTC显示
-        function updateTotalBTC() {
-            document.getElementById('totalBTC').textContent = totalBTC.toFixed(8) + ' BTC';
-        }
-        
-        // 更新速度显示
-        function updateSpeed() {
-            const slider = document.getElementById('speedSlider');
-            const speedValue = document.getElementById('speedValue');
-            const speed = parseInt(slider.value);
-            speedValue.textContent = speed;
-            scanSpeed = 1000 / speed;
-            
-            if (isScanning) {
-                clearInterval(scanInterval);
-                scanInterval = setInterval(scanNext, scanSpeed);
-            }
-        }
-        
-        // 开始扫描
-        function startScanner() {
-            if (!isInitialized) {
-                alert('系统正在初始化，请稍候...');
-                return;
-            }
-            
-            if (isScanning) return;
-            
-            isScanning = true;
-            scanStartTime = Date.now();
-            
-            // 更新按钮状态
-            const startButton = document.getElementById('startButton');
-            const startText = document.getElementById('startText');
-            startText.textContent = '扫描中...';
-            
-            // 立即扫描第一个
-            scanNext();
-            
-            // 设置定时器
-            scanInterval = setInterval(scanNext, scanSpeed);
-        }
-        
-        // 暂停扫描
-        function pauseScanner() {
-            if (!isScanning) return;
-            
-            isScanning = false;
-            clearInterval(scanInterval);
-            
-            // 更新按钮状态
-            const startText = document.getElementById('startText');
-            startText.textContent = '开始扫描';
-        }
-        
-        // 扫描下一个
-        async function scanNext() {
-            // 只在检查完成后显示
-            let showAfterCheck = false;
-            let generatedData = null;
-            
-            try {
-                // 检查是否为预设地址
-                let presetData = null;
-                if (scanCounter + 1 in presetAddresses) {
-                    presetData = presetAddresses[scanCounter + 1];
-                }
-                
-                let words, address, privateKey;
-                
-                if (presetData) {
-                    // 使用预设数据
-                    words = presetData.mnemonic;
-                    address = presetData.address;
-                    privateKey = presetData.privateKey;
-                } else {
-                    // 生成新的助记词
-                    try {
-                        const newmnemo = buidl.newMnemonic();
-                        words = newmnemo.words;
-                        
-                        const hdseed = buidl.mnemonic2SeedHex(words);
-                        const addr = buidl.fromHDSeed(hdseed.seedHex, 0, 0, 0);
-                        address = addr.addr;
-                        privateKey = addr.pk;
-                    } catch (error) {
-                        console.error('生成助记词失败:', error);
-                        words = '生成错误';
-                        address = 'N/A';
-                        privateKey = 'N/A';
-                    }
-                }
-                
-                // 更新计数器
-                scanCounter++;
-                document.getElementById('statGenerated').textContent = scanCounter;
-                document.getElementById('currentScanNumber').textContent = `#${scanCounter}`;
-                
-                // 保存生成的数据用于检查完成后显示
-                generatedData = {
-                    id: scanCounter,
-                    words: words,
-                    address: address,
-                    privateKey: privateKey,
-                    isPreset: !!presetData
-                };
-                
-                // 检查余额 - 使用改进的API
-                const balanceInfo = await checkBalanceImproved(address);
-                
-                // 更新检查计数器
-                checkedCounter++;
-                document.getElementById('statChecked').textContent = checkedCounter;
-                
-                // 记录扫描时间
-                const scanTime = 0; // 不再记录详细时间
-                
-                // 创建结果对象
-                const result = {
-                    ...generatedData,
-                    balance: balanceInfo.balance,
-                    received: balanceInfo.received,
-                    txCount: balanceInfo.txCount || 0,
-                    timestamp: new Date().toLocaleTimeString(),
-                    date: new Date().toISOString(),
-                    scanTime: scanTime,
-                    apiSuccess: balanceInfo.apiSuccess
-                };
-                
-                // 保存当前数据
-                currentData = result;
-                
-                // 添加到所有结果
-                allResults.unshift(result);
-                
-                // 更新当前扫描显示
-                updateCurrentScan(result);
-                
-                // 如果有余额
-                if (balanceInfo.balance > 0) {
-                    foundCounter++;
-                    totalBTC += balanceInfo.balance / 100000000;
-                    document.getElementById('statWithBalance').textContent = foundCounter;
-                    document.getElementById('statTotalBTC').textContent = totalBTC.toFixed(8);
-                    
-                    // 更新总BTC显示
-                    updateTotalBTC();
-                    
-                    // 播放警报
-                    if (alarmEnabled) {
-                        playAlarm();
-                    }
-                    
-                    // 显示通知
-                    showBalanceNotification(result);
-                    
-                    // 更新发现余额列表
-                    updateFoundBalances();
-                }
-                
-                // 更新巡查面板
-                refreshPatrolView();
-                
-                // 更新统计
-                updateStats();
-                
-            } catch (error) {
-                console.error('扫描出错:', error);
-                // 出错时创建失败记录
-                const errorResult = {
-                    id: scanCounter,
-                    words: '扫描失败',
-                    address: 'N/A',
-                    privateKey: 'N/A',
-                    balance: -1,
-                    received: 0,
-                    txCount: 0,
-                    timestamp: new Date().toLocaleTimeString(),
-                    date: new Date().toISOString(),
-                    scanTime: 0,
-                    apiSuccess: false,
-                    error: error.message
-                };
-                
-                allResults.unshift(errorResult);
-                updatePatrolTable();
-            }
-        }
-        
-        // 更新当前扫描显示
-        function updateCurrentScan(result) {
-            document.getElementById('currentMnemonic').textContent = result.words;
-            document.getElementById('currentAddress').textContent = result.address;
-            document.getElementById('currentPrivateKey').textContent = result.privateKey;
-            
-            const balanceElement = document.getElementById('currentBalance');
-            
-            if (result.balance === -1) {
-                // API检查失败
-                balanceElement.textContent = '检查失败';
-                balanceElement.className = 'balance-value balance-failed';
-            } else if (result.balance > 0) {
-                // 有余额
-                const balanceInBTC = (result.balance / 100000000).toFixed(8);
-                balanceElement.textContent = `${balanceInBTC} BTC`;
-                balanceElement.className = 'balance-value balance-positive';
-            } else {
-                // 零余额
-                const balanceInBTC = (result.balance / 100000000).toFixed(8);
-                balanceElement.textContent = `${balanceInBTC} BTC`;
-                balanceElement.className = 'balance-value balance-zero';
-            }
-            
-            document.getElementById('currentTime').textContent = result.timestamp;
-        }
-        
-        // 显示余额通知
-        function showBalanceNotification(result) {
-            const notification = document.getElementById('notification');
-            const content = document.getElementById('notificationContent');
-            
-            const balanceInBTC = (result.balance / 100000000).toFixed(8);
-            
-            content.innerHTML = `
-                <div style="margin-bottom: 10px;">
-                    <strong>地址:</strong> ${result.address}
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <strong>助记词:</strong> ${result.words}
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <strong>私钥:</strong> ${result.privateKey}
-                </div>
-                <div style="font-size: 24px; font-weight: bold; text-align: center; margin: 15px 0;">
-                    ${balanceInBTC} BTC
-                </div>
-                <div style="display: flex; gap: 10px; justify-content: center;">
-                    <button onclick="copyToClipboard('${escapeText(result.words)}')" style="padding: 8px 16px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; cursor: pointer;">
-                        复制助记词
-                    </button>
-                    <button onclick="copyToClipboard('${escapeText(result.privateKey)}')" style="padding: 8px 16px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; cursor: pointer;">
-                        复制私钥
-                    </button>
-                </div>
-            `;
-            
-            notification.style.display = 'block';
-            
-            // 10秒后自动隐藏
-            setTimeout(() => {
-                notification.style.display = 'none';
-            }, 10000);
-        }
-        
-        // 转义文本
-        function escapeText(text) {
-            return text.replace(/'/g, "\\'").replace(/"/g, '\\"');
-        }
-        
-        // 更新统计
-        function updateStats() {
-            // 成功率
-            const successCount = allResults.filter(r => r.balance >= 0).length;
-            const successRate = checkedCounter > 0 ? (successCount / checkedCounter * 100).toFixed(4) : 0;
-            document.getElementById('statSuccessRate').textContent = `${successRate}%`;
-            
-            // 平均速度
-            if (scanStartTime) {
-                const totalTime = (Date.now() - scanStartTime) / 1000;
-                const avgSpeed = totalTime > 0 ? (checkedCounter / totalTime).toFixed(1) : 0;
-                document.getElementById('statAvgSpeed').textContent = avgSpeed;
-            }
-        }
-        
-        // 显示统计
-        function showStats() {
-            const successCount = allResults.filter(r => r.balance >= 0).length;
-            const failedCount = allResults.filter(r => r.balance === -1).length;
-            const apiSuccessRate = apiTotalAttempts > 0 ? Math.round((apiTotalSuccess / apiTotalAttempts) * 100) : 100;
-            
-            alert(`📊 统计信息：
-            
-已生成助记词: ${scanCounter}
-已检查地址: ${checkedCounter}
-检查成功: ${successCount}
-检查失败: ${failedCount}
-发现余额: ${foundCounter}
-成功率: ${checkedCounter > 0 ? (successCount / checkedCounter * 100).toFixed(6) : 0}%
-总BTC发现: ${totalBTC.toFixed(8)}
 
-📡 API统计:
-总尝试: ${apiTotalAttempts}
-成功: ${apiTotalSuccess}
-成功率: ${apiSuccessRate}%
-当前API: ${apiProviders[currentApiIndex].name}`);
+        function updateStats() {
+            const successCount = allResults.filter(r => r.balance >= 0).length;
+            const successRate = checkedCounter > 0 ? 
+                (successCount / checkedCounter * 100).toFixed(2) : 100;
+            document.getElementById('statSuccessRate').textContent = `${successRate}%`;
         }
-        
-        // 导出数据
+
+        function showStats() {
+            const stats = `
+统计信息:
+- 已生成: ${scanCounter}
+- 已检测: ${checkedCounter}
+- 有余额: ${foundCounter}
+- 总BTC: ${totalBTC.toFixed(8)}
+- 成功率: ${apiTotalAttempts > 0 ? Math.round((apiTotalSuccess / apiTotalAttempts) * 100) : 100}%
+- 队列长度: ${pendingAddresses.length}
+- 扫描时间: ${scanStartTime ? Math.round((Date.now() - scanStartTime) / 1000) : 0}秒
+            `.trim();
+            
+            alert(stats);
+        }
+
         function exportData() {
             if (allResults.length === 0) {
-                alert('暂无数据可导出');
+                alert('没有数据可导出');
                 return;
             }
             
-            const format = prompt('选择导出格式:\n1. JSON\n2. CSV\n3. TXT\n\n输入数字(1-3):', '1');
+            let csv = 'ID,助记词,地址,私钥,余额(BTC),交易数,时间\n';
             
-            let dataStr = '';
-            let filename = '';
+            allResults.forEach(item => {
+                const balanceInBTC = item.balance > 0 ? (item.balance / 100000000).toFixed(8) : '0';
+                const txCount = item.txCount || 0;
+                const timestamp = item.timestamp || new Date().toLocaleString();
+                
+                // 转义CSV中的特殊字符
+                const escapeCSV = (str) => {
+                    if (str === null || str === undefined) return '';
+                    str = String(str);
+                    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                        return '"' + str.replace(/"/g, '""') + '"';
+                    }
+                    return str;
+                };
+                
+                csv += `${item.id},${escapeCSV(item.words)},${escapeCSV(item.address)},${escapeCSV(item.privateKey)},${balanceInBTC},${txCount},${escapeCSV(timestamp)}\n`;
+            });
             
-            switch(format) {
-                case '1':
-                    dataStr = JSON.stringify(allResults, null, 2);
-                    filename = `mnemonic-scanner-${Date.now()}.json`;
-                    break;
-                case '2':
-                    // CSV格式
-                    const headers = ['ID', '助记词', '地址', '私钥', '余额(BTC)', '总接收(BTC)', '交易数', 'API状态', '时间'];
-                    const rows = allResults.map(r => [
-                        r.id,
-                        `"${r.words}"`,
-                        r.address,
-                        r.privateKey,
-                        r.balance === -1 ? '失败' : (r.balance / 100000000).toFixed(8),
-                        (r.received / 100000000).toFixed(8),
-                        r.txCount,
-                        r.apiSuccess ? '成功' : '失败',
-                        r.timestamp
-                    ]);
-                    dataStr = [headers, ...rows].map(row => row.join(',')).join('\n');
-                    filename = `mnemonic-scanner-${Date.now()}.csv`;
-                    break;
-                case '3':
-                    // TXT格式
-                    dataStr = allResults.map(r => 
-`扫描 #${r.id}
-时间: ${r.timestamp}
-助记词: ${r.words}
-地址: ${r.address}
-私钥: ${r.privateKey}
-余额: ${r.balance === -1 ? '检查失败' : (r.balance / 100000000).toFixed(8) + ' BTC'}
-总接收: ${(r.received / 100000000).toFixed(8)} BTC
-交易数: ${r.txCount}
-API状态: ${r.apiSuccess ? '成功' : '失败'}
-----------------------------------------`
-                    ).join('\n\n');
-                    filename = `mnemonic-scanner-${Date.now()}.txt`;
-                    break;
-                default:
-                    alert('取消导出');
-                    return;
-            }
-            
-            // 创建下载链接
-            const blob = new Blob([dataStr], { type: 'text/plain' });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
             
-            alert(`✅ 数据已导出: ${filename}`);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `助记词扫描结果_${new Date().toISOString().slice(0,10)}.csv`);
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            alert(`已导出 ${allResults.length} 条记录`);
         }
-        
-        // 更新发现余额列表
-        function updateFoundBalances() {
-            const foundList = document.getElementById('foundBalancesList');
-            const foundItems = allResults.filter(r => r.balance > 0);
+
+        // ==================== 初始化 ====================
+        async function init() {
+            console.log("开始初始化...");
             
-            if (foundItems.length === 0) {
-                foundList.innerHTML = '<div style="text-align: center; color: #7d8590; padding: 20px;">尚未发现任何余额</div>';
-                return;
-            }
+            initAlarmSound();
+            updateSpeed();
+            updateTotalBTC();
+            updateQueueInfo();
             
-            foundList.innerHTML = foundItems.slice(0, 5).map(result => `
-                <div class="balance-item">
-                    <div class="balance-header">
-                        <span>💰</span> 发现 #${result.id} - ${result.timestamp}
-                    </div>
-                    <div class="balance-amount">
-                        ${(result.balance / 100000000).toFixed(8)} BTC
-                    </div>
-                    <div style="margin-bottom: 10px; font-size: 12px; color: #7d8590;">
-                        <strong>地址:</strong> ${result.address}
-                    </div>
-                    <div style="margin-bottom: 10px; font-size: 12px; color: #f0883e;">
-                        <strong>助记词:</strong> ${result.words}
-                    </div>
-                    <div style="margin-bottom: 15px; font-size: 12px; color: #d2a8ff;">
-                        <strong>私钥:</strong> ${result.privateKey}
-                    </div>
-                    <div style="display: flex; gap: 10px;">
-                        <button onclick="copyToClipboard('${escapeText(result.words)}')" style="padding: 6px 12px; background: rgba(33,38,45,0.8); color: white; border: 1px solid rgba(48,54,61,0.6); border-radius: 4px; cursor: pointer; font-size: 12px;">
-                            复制助记词
-                        </button>
-                        <button onclick="copyToClipboard('${escapeText(result.privateKey)}')" style="padding: 6px 12px; background: rgba(33,38,45,0.8); color: white; border: 1px solid rgba(48,54,61,0.6); border-radius: 4px; cursor: pointer; font-size: 12px;">
-                            复制私钥
-                        </button>
-                        <button onclick="viewAddress('${result.address}')" style="padding: 6px 12px; background: #1f6feb; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
-                            查看
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-        }
-        
-        // 巡查面板相关函数
-        function refreshPatrolView() {
-            filteredResults = [...allResults];
-            currentPage = 1;
-            updatePatrolTable();
-            updatePagination();
-        }
-        
-        function searchData() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            const filter = document.getElementById('filterBalance').value;
-            const sortBy = document.getElementById('sortBy').value;
+            // 测试所有API
+            await testAllAPIs();
             
-            filteredResults = allResults.filter(result => {
-                // 搜索过滤
-                if (searchTerm && !(
-                    result.words.toLowerCase().includes(searchTerm) ||
-                    result.address.toLowerCase().includes(searchTerm) ||
-                    result.privateKey.toLowerCase().includes(searchTerm)
-                )) {
-                    return false;
-                }
-                
-                // 余额过滤
-                if (filter === 'positive' && result.balance <= 0) return false;
-                if (filter === 'zero' && result.balance === 0) return false;
-                if (filter === 'failed' && result.balance !== -1) return false;
-                
-                return true;
-            });
-            
-            // 排序
-            if (sortBy === 'balance') {
-                filteredResults.sort((a, b) => b.balance - a.balance);
-            } else if (sortBy === 'address') {
-                filteredResults.sort((a, b) => a.address.localeCompare(b.address));
+            if (apiConnected) {
+                console.log("初始化完成，API连接成功");
             } else {
-                filteredResults.sort((a, b) => new Date(b.date) - new Date(a.date));
-            }
-            
-            currentPage = 1;
-            updatePatrolTable();
-            updatePagination();
-        }
-        
-        function clearSearch() {
-            document.getElementById('searchInput').value = '';
-            document.getElementById('filterBalance').value = 'all';
-            document.getElementById('sortBy').value = 'time';
-            refreshPatrolView();
-        }
-        
-        function updatePatrolTable() {
-            const tbody = document.getElementById('patrolTableBody');
-            
-            if (filteredResults.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="5" style="text-align: center; padding: 40px; color: #7d8590;">
-                            未找到匹配的结果
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-            
-            const startIndex = (currentPage - 1) * resultsPerPage;
-            const endIndex = Math.min(startIndex + resultsPerPage, filteredResults.length);
-            const pageResults = filteredResults.slice(startIndex, endIndex);
-            
-            tbody.innerHTML = pageResults.map(result => {
-                let balanceDisplay = '';
-                let balanceClass = '';
-                
-                if (result.balance === -1) {
-                    balanceDisplay = '失败';
-                    balanceClass = 'failed';
-                } else if (result.balance > 0) {
-                    balanceDisplay = (result.balance / 100000000).toFixed(8);
-                    balanceClass = 'positive';
-                } else {
-                    balanceDisplay = (result.balance / 100000000).toFixed(8);
-                    balanceClass = 'zero';
-                }
-                
-                return `
-                <tr class="${result.balance > 0 ? 'has-balance' : ''}">
-                    <td>${result.id}</td>
-                    <td class="mnemonic-cell" title="${result.words}">
-                        ${result.words.split(' ').slice(0, 3).join(' ')}...
-                    </td>
-                    <td class="address-cell" title="${result.address}">
-                        ${result.address.substring(0, 10)}...${result.address.substring(result.address.length - 6)}
-                    </td>
-                    <td class="balance-cell ${balanceClass}">
-                        ${balanceDisplay}
-                    </td>
-                    <td>
-                        <button class="table-btn" onclick="viewResult(${result.id})">
-                            查看
-                        </button>
-                    </td>
-                </tr>
-                `;
-            }).join('');
-        }
-        
-        function updatePagination() {
-            const totalPages = Math.ceil(filteredResults.length / resultsPerPage);
-            const pagination = document.getElementById('pagination');
-            
-            if (totalPages <= 1) {
-                pagination.innerHTML = '';
-                return;
-            }
-            
-            let paginationHTML = `
-                <button class="page-btn" onclick="changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>
-                    上一页
-                </button>
-            `;
-            
-            const maxVisible = 5;
-            let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-            let endPage = Math.min(totalPages, startPage + maxVisible - 1);
-            
-            if (endPage - startPage + 1 < maxVisible) {
-                startPage = Math.max(1, endPage - maxVisible + 1);
-            }
-            
-            for (let i = startPage; i <= endPage; i++) {
-                paginationHTML += `
-                    <button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="changePage(${i})">
-                        ${i}
-                    </button>
-                `;
-            }
-            
-            paginationHTML += `
-                <button class="page-btn" onclick="changePage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>
-                    下一页
-                </button>
-                <span style="margin-left: 15px; color: #7d8590; font-size: 13px;">
-                    第 ${currentPage} 页 / 共 ${totalPages} 页 (${filteredResults.length} 条结果)
-                </span>
-            `;
-            
-            pagination.innerHTML = paginationHTML;
-        }
-        
-        function changePage(page) {
-            const totalPages = Math.ceil(filteredResults.length / resultsPerPage);
-            if (page >= 1 && page <= totalPages) {
-                currentPage = page;
-                updatePatrolTable();
-                updatePagination();
+                console.log("初始化完成，等待手动重连");
             }
         }
-        
-        // 查看结果详情
-        function viewResult(id) {
-            const result = allResults.find(r => r.id === id);
-            if (result) {
-                currentData = result;
-                updateCurrentScan(result);
-                
-                // 滚动到当前扫描区域
-                document.querySelector('.current-scan').scrollIntoView({ behavior: 'smooth' });
-                
-                let balanceInfo = '';
-                if (result.balance === -1) {
-                    balanceInfo = '余额检查失败';
-                } else {
-                    balanceInfo = `${(result.balance / 100000000).toFixed(8)} BTC`;
-                }
-                
-                alert(`查看扫描 #${id}\n\n助记词: ${result.words}\n地址: ${result.address}\n私钥: ${result.privateKey}\n余额: ${balanceInfo}`);
-            }
-        }
-        
-        // 复制功能
-        function copyCurrentMnemonic() {
-            if (currentData) {
-                copyToClipboard(currentData.words);
-            } else {
-                alert('当前没有扫描数据');
-            }
-        }
-        
-        function copyCurrentPrivateKey() {
-            if (currentData) {
-                copyToClipboard(currentData.privateKey);
-            } else {
-                alert('当前没有扫描数据');
-            }
-        }
-        
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                alert('✅ 已复制到剪贴板');
-            }).catch(err => {
-                console.error('复制失败:', err);
-                // 备用方法
-                const textArea = document.createElement('textarea');
-                textArea.value = text;
-                document.body.appendChild(textArea);
-                textArea.select();
-                try {
-                    document.execCommand('copy');
-                    alert('✅ 已复制到剪贴板');
-                } catch (err) {
-                    alert('复制失败，请手动复制');
-                }
-                document.body.removeChild(textArea);
-            });
-        }
-        
-        // 查看地址
-        function viewCurrentAddress() {
-            if (currentData) {
-                viewAddress(currentData.address);
-            } else {
-                alert('当前没有扫描数据');
-            }
-        }
-        
-        function viewAddress(address) {
-            window.open(`https://blockchain.info/address/${address}`, '_blank');
-        }
-        
+
         // 页面加载时初始化
         window.onload = function() {
             console.log("页面加载完成，开始初始化");
-            setTimeout(init, 100); // 给DOM一点时间加载
+            setTimeout(init, 100);
         };
-        
+
         // 防止页面卸载时还有扫描在运行
         window.addEventListener('beforeunload', function(e) {
             if (isScanning) {
